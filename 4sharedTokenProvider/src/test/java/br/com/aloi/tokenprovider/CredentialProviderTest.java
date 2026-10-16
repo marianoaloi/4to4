@@ -47,6 +47,23 @@ class CredentialProviderTest {
                 () -> CredentialProvider.fromAccountDocument("user@example.test", account, settings,
                         Instant.parse("2026-10-16T12:51:00Z")));
         assertTrue(error.getMessage().contains("reauthorization"));
+        assertTrue(CredentialProvider.requiresAuthorization(account, settings,
+                Instant.parse("2026-10-16T12:51:00Z")));
+    }
+
+    @Test
+    void startsAuthorizationWhenAccountDoesNotExist() {
+        assertTrue(CredentialProvider.requiresAuthorization(null, settings, Instant.now()));
+    }
+
+    @Test
+    void doesNotStartAuthorizationForUsableStoredAccessor() {
+        Document account = new Document("rootFolderId", "root-123")
+                .append("accessor", new Document("accessToken", "token")
+                        .append("tokenSecret", "secret")
+                        .append("created", Date.from(Instant.parse("2026-10-16T12:00:00Z"))));
+        assertFalse(CredentialProvider.requiresAuthorization(account, settings,
+                Instant.parse("2026-10-16T12:20:00Z")));
     }
 
     @Test

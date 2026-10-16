@@ -40,7 +40,7 @@ java -jar .\4sharedUploader\target\4shared-uploader-1.0.0-jar-with-dependencies.
 
 Database defaults are database `4shared`, collection `accounts`, and a 50-minute token lifetime. Override with `FOURSHARED_DATABASE`, `FOURSHARED_ACCOUNTS_COLLECTION`, and `FOURSHARED_TOKEN_MAX_AGE_MINUTES`. `FOURSHARED_ROOT_FOLDER_ID` can override the account's root folder.
 
-For a new account, the first run opens the configured 4shared authorization page and waits up to five minutes for the browser redirect to localhost. Configure `FOURSHARED_AUTH_TIMEOUT_MINUTES` and OAuth endpoint variables if needed. The provider saves the new token pair before requesting the user's profile; if root-folder lookup fails, set `FOURSHARED_ROOT_FOLDER_ID` to upload.
+For a new account, the first run opens the configured 4shared authorization page and waits up to five minutes for the browser redirect to localhost. Configure `FOURSHARED_AUTH_TIMEOUT_MINUTES` and OAuth endpoint variables if needed. Before saving, the provider confirms that the 4shared profile email matches `FOURSHARED_LOGIN`. If the profile does not include a root-folder ID, set `FOURSHARED_ROOT_FOLDER_ID` to upload.
 
 Alternatively, provide `FOURSHARED_CONSUMER_KEY`, `FOURSHARED_CONSUMER_SECRET`, `FOURSHARED_ACCESS_TOKEN`, `FOURSHARED_ACCESS_TOKEN_SECRET`, and `FOURSHARED_ROOT_FOLDER_ID` directly, without setting `FOURSHARED_LOGIN`.
 

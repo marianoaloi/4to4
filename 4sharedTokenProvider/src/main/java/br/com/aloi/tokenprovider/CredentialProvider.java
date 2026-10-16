@@ -36,37 +36,40 @@ public final class CredentialProvider {
             MongoCollection<Document> accounts = client.getDatabase(settings.database())
                     .getCollection(settings.accountCollection());
             Document account = accounts.find(eq("_id", normalizedLogin)).first();
-            if (account != null) {
-                try {
-                    return fromAccountDocument(normalizedLogin, account, settings, clock.instant());
-                } catch (CredentialException missingOrExpired) {
-                    // The legacy client creates an accessor and starts OAuth when the account or accessor is absent/stale.
-                }
+            if (!requiresAuthorization(account, settings, clock.instant())) {
+                return fromAccountDocument(normalizedLogin, account, settings, clock.instant());
             }
 
             OAuthAuthorizationClient authorization = new OAuthAuthorizationClient(settings);
             OAuthAuthorizationClient.TokenPair tokens = authorization.authorize(normalizedLogin);
+            Document user = authorization.getUser(tokens);
+            String authorizedLogin = user.getString("email");
+            if (authorizedLogin == null || !normalizedLogin.equalsIgnoreCase(authorizedLogin.trim())) {
+                throw new CredentialException("The 4shared account authorized in the browser does not match the selected login");
+            }
             Document accessor = new Document("created", Date.from(clock.instant()))
                     .append("accessToken", tokens.accessToken())
                     .append("tokenSecret", tokens.accessTokenSecret())
-                    .append("requestToken", tokens.requestToken());
+                    .append("requestToken", tokens.requestToken())
+                    .append("user", user)
+                    .append("freeSize", user.get("freeSpace"));
             accounts.updateOne(eq("_id", normalizedLogin),
                     new Document("$set", new Document("accessor", accessor)),
                     new com.mongodb.client.model.UpdateOptions().upsert(true));
-
-            String rootFolderId = null;
-            try {
-                Document user = authorization.getUser(tokens);
-                accessor.append("user", user);
-                rootFolderId = user.getString("rootFolderId");
-                accounts.updateOne(eq("_id", normalizedLogin),
-                        new Document("$set", new Document("accessor.user", user)));
-            } catch (RuntimeException userLookupFailed) {
-                System.err.println("OAuth tokens were saved, but 4shared user details could not be loaded. "
-                        + "Set FOURSHARED_ROOT_FOLDER_ID before uploading.");
-            }
             return new AccountCredentials(normalizedLogin, settings.consumerKey(), settings.consumerSecret(),
-                    tokens.accessToken(), tokens.accessTokenSecret(), rootFolderId);
+                    tokens.accessToken(), tokens.accessTokenSecret(), user.getString("rootFolderId"));
+        }
+    }
+
+    static boolean requiresAuthorization(Document account, ProviderSettings settings, Instant now) {
+        if (account == null) {
+            return true;
+        }
+        try {
+            fromAccountDocument("account-check", account, settings, now);
+            return false;
+        } catch (RuntimeException unusableAccessor) {
+            return true;
         }
     }
 

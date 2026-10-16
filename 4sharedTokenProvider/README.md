@@ -29,7 +29,7 @@ Optional:
 | `FOURSHARED_ACCESS_TOKEN_URL` | `https://api.4shared.com/v1_2/oauth/token` |
 | `FOURSHARED_USER_URL` | `https://api.4shared.com/v1_2/user` |
 
-Use a secret manager or shell-level secure injection for values. Do not commit credentials or put them in command arguments. When authorization succeeds, token fields and creation time are saved under the selected account's `accessor`; the user profile is also saved when its lookup succeeds.
+Use a secret manager or shell-level secure injection for values. Do not commit credentials or put them in command arguments. The provider verifies that the profile email returned by 4shared matches the selected login before saving the token pair and profile under that account's `accessor`.
 
 ## Build and check one login
 

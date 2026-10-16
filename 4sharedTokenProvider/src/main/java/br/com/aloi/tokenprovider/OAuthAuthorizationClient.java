@@ -52,8 +52,8 @@ final class OAuthAuthorizationClient {
 
             URI callbackUri = URI.create("http://127.0.0.1:" + callbackServer.getAddress().getPort() + CALLBACK_PATH);
             Map<String, String> requestParameters = Map.of("oauth_callback", callbackUri.toString());
-            Map<String, String> requestTokenResponse = postForm(settings.requestTokenUri(),
-                    authorizationHeader("POST", settings.requestTokenUri(), requestParameters, null, null));
+            Map<String, String> requestTokenResponse = getForm(oauthRequestUri(
+                    settings.requestTokenUri(), requestParameters, null, null));
             String requestToken = required(requestTokenResponse, "oauth_token");
             String requestSecret = required(requestTokenResponse, "oauth_token_secret");
             URI authorizationUri = withQuery(settings.authorizationUri(), Map.of("oauth_token", requestToken));
@@ -69,9 +69,8 @@ final class OAuthAuthorizationClient {
             Map<String, String> exchangeParameters = Map.of(
                     "oauth_token", requestToken,
                     "oauth_verifier", callback.verifier());
-            Map<String, String> accessResponse = postForm(settings.accessTokenUri(),
-                    authorizationHeader("POST", settings.accessTokenUri(), exchangeParameters,
-                            requestToken, requestSecret));
+            Map<String, String> accessResponse = getForm(oauthRequestUri(
+                    settings.accessTokenUri(), exchangeParameters, requestToken, requestSecret));
             return new TokenPair(required(accessResponse, "oauth_token"),
                     required(accessResponse, "oauth_token_secret"), requestToken);
         } catch (TimeoutException e) {
@@ -96,10 +95,10 @@ final class OAuthAuthorizationClient {
 
     Document getUser(TokenPair tokens) {
         try {
-            String authorization = authorizationHeader("GET", settings.userUri(), Map.of(),
+            URI signedUri = oauthRequestUri(settings.userUri(), Map.of(),
                     tokens.accessToken(), tokens.accessTokenSecret());
-            var request = java.net.http.HttpRequest.newBuilder(settings.userUri())
-                    .timeout(HTTP_TIMEOUT).header("Authorization", authorization).GET().build();
+            var request = java.net.http.HttpRequest.newBuilder(signedUri)
+                    .timeout(HTTP_TIMEOUT).GET().build();
             var response = http.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new CredentialException("4shared user lookup returned HTTP " + response.statusCode());
@@ -113,13 +112,11 @@ final class OAuthAuthorizationClient {
         }
     }
 
-    private Map<String, String> postForm(URI uri, String authorization)
+    private Map<String, String> getForm(URI uri)
             throws IOException, InterruptedException {
         var request = java.net.http.HttpRequest.newBuilder(uri)
                 .timeout(HTTP_TIMEOUT)
-                .header("Authorization", authorization)
-                .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
-                .POST(java.net.http.HttpRequest.BodyPublishers.noBody())
+                .GET()
                 .build();
         var response = http.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
@@ -142,7 +139,7 @@ final class OAuthAuthorizationClient {
                 throw new CredentialException("4shared authorization was denied or cancelled");
             }
             String token = required(parameters, "oauth_token");
-            String verifier = required(parameters, "oauth_verifier");
+            String verifier = ""; //required(parameters, "oauth_verifier");
             callbackResult.complete(new Callback(token, verifier));
         } catch (RuntimeException e) {
             status = 400;
@@ -160,8 +157,8 @@ final class OAuthAuthorizationClient {
         }
     }
 
-    private String authorizationHeader(String method, URI uri, Map<String, String> oauthParameters,
-                                       String token, String tokenSecret) throws GeneralSecurityException {
+    private URI oauthRequestUri(URI uri, Map<String, String> oauthParameters,
+                                String token, String tokenSecret) throws GeneralSecurityException {
         Map<String, String> oauth = new TreeMap<>();
         oauth.put("oauth_consumer_key", settings.consumerKey());
         oauth.put("oauth_nonce", nonce());
@@ -184,14 +181,12 @@ final class OAuthAuthorizationClient {
         String baseUri = uri.getScheme().toLowerCase() + "://" + uri.getHost().toLowerCase()
                 + ((uri.getPort() == -1 || ("https".equalsIgnoreCase(uri.getScheme()) && uri.getPort() == 443))
                 ? "" : ":" + uri.getPort()) + (path == null || path.isEmpty() ? "/" : path);
-        String baseString = method.toUpperCase() + "&" + encode(baseUri) + "&" + encode(normalized);
+        String baseString = "GET&" + encode(baseUri) + "&" + encode(normalized);
         String signingKey = encode(settings.consumerSecret()) + "&" + encode(tokenSecret == null ? "" : tokenSecret);
         Mac mac = Mac.getInstance("HmacSHA1");
         mac.init(new SecretKeySpec(signingKey.getBytes(StandardCharsets.UTF_8), "HmacSHA1"));
         oauth.put("oauth_signature", Base64.getEncoder().encodeToString(mac.doFinal(baseString.getBytes(StandardCharsets.UTF_8))));
-        return "OAuth " + oauth.entrySet().stream()
-                .map(entry -> encode(entry.getKey()) + "=\"" + encode(entry.getValue()) + "\"")
-                .reduce((a, b) -> a + ", " + b).orElse("");
+        return withQuery(uri, oauth);
     }
 
     static Map<String, String> parseForm(String form) {
