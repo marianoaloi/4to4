@@ -14,6 +14,7 @@
     <modules>
         <module>4sharedTokenProvider</module>
         <module>4sharedUploader</module>
+        <module>4sharedCallAccessToken</module>
     </modules>
 
     <properties>
