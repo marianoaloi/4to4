@@ -1,0 +1,22 @@
+.project
+.settings/**
+
+*.class
+**/target/**
+**/.settings/**
+
+# Codex local configuration
+.codex/
+# Claude Flow runtime data
+.claude-flow/data/
+.claude-flow/logs/
+# Environment variables
+.env
+.env.local
+.env.*.local
+.agents/**
+AGENTS.md
+
+# Private login catalog
+4sharedCallAccessToken/logins.json
+.vscode/launch.json
