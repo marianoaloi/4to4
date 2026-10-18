@@ -140,7 +140,8 @@ final class OAuthAuthorizationClient {
                 throw new CredentialException("4shared authorization was denied or cancelled");
             }
             String token = required(parameters, "oauth_token");
-            String verifier = required(parameters, "oauth_verifier");
+            System.out.printf("Received 4shared OAuth callback for token %s%n", token);
+            String verifier = parameters.get("oauth_verifier");
             callbackResult.complete(new Callback(token, verifier));
         } catch (RuntimeException e) {
             status = 400;
