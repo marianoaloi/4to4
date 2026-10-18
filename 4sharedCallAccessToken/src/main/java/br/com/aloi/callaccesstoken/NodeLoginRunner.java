@@ -52,7 +52,9 @@ final class NodeLoginRunner {
         command.add(login);
         command.add(tokenProviderLink);
         command.add("querover");
-        return List.copyOf(command);
+        var result = List.copyOf(command);
+        System.out.printf("Node command: %s%n",result.stream().collect(java.util.stream.Collectors.joining(" ")))  ;
+        return result;
     }
 
     record RunResult(int exitCode, boolean reportedSuccess, boolean reportedFailure) { }

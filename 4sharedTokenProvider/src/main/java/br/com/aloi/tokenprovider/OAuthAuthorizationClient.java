@@ -61,6 +61,9 @@ final class OAuthAuthorizationClient {
 
             System.out.printf("Authorize 4shared login %s in the browser. If it does not open, visit:%n%s%n",
                     login, authorizationUri);
+                    
+            System.out.printf("\"%s\",%n\"%s\",%n",
+                    login, authorizationUri);
             InteractiveLogin.authorize(login, authorizationUri);
 
             Callback callback = callbackResult.get(settings.authorizationTimeout().toMillis(), TimeUnit.MILLISECONDS);
@@ -141,7 +144,7 @@ final class OAuthAuthorizationClient {
             }
             String token = required(parameters, "oauth_token");
             System.out.printf("Received 4shared OAuth callback for token %s%n", token);
-            String verifier = parameters.get("oauth_verifier");
+            String verifier = "" ; //parameters.get("oauth_verifier");
             callbackResult.complete(new Callback(token, verifier));
         } catch (RuntimeException e) {
             status = 400;
