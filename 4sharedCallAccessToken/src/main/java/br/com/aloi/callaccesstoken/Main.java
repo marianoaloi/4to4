@@ -1,7 +1,9 @@
 package br.com.aloi.callaccesstoken;
 
-import java.io.IOException;
-import java.nio.file.Files;
+import br.com.aloi.tokenprovider.AccountCredentials;
+import br.com.aloi.tokenprovider.CredentialProvider;
+import br.com.aloi.tokenprovider.ProviderSettings;
+
 import java.util.List;
 
 public final class Main {
@@ -22,38 +24,27 @@ public final class Main {
                 logins = logins.stream().limit(options.limit()).toList();
             }
             if (options.dryRun()) {
-                System.out.printf("Dry run: %d active login(s) would be processed.%n", logins.size());
+                System.out.printf("Dry run: %d login(s) would be resolved.%n", logins.size());
                 return;
             }
 
-            NodeSettings settings = NodeSettings.fromEnvironment();
-            if (!Files.isRegularFile(settings.script()) || !Files.isReadable(settings.script())) {
-                throw new IllegalArgumentException("Node script is not readable: " + settings.script());
-            }
-            NodeLoginRunner runner = new NodeLoginRunner(settings);
+            CredentialProvider credentialProvider = new CredentialProvider(ProviderSettings.fromEnvironment());
             int failures = 0;
             for (String login : logins) {
-                System.out.printf("Starting Node login flow for %s%n", login);
                 try {
-                    NodeLoginRunner.RunResult result = runner.run(login);
-                    if (result.exitCode() == 0 && result.reportedSuccess() && !result.reportedFailure()) {
-                        System.out.printf("Node process completed for %s%n", login);
-                    } else {
-                        failures++;
-                        System.err.printf("Node login did not report success for %s (exit %d)%n",
-                                login, result.exitCode());
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException("Interrupted while waiting for the Node login flow", e);
+                    AccountCredentials credentials = credentialProvider.resolve(login);
+                    System.out.printf("OAuth credentials are available for %s; secret values are redacted.%n",
+                            credentials.login());
+                } catch (RuntimeException e) {
+                    failures++;
+                    System.err.printf("Could not resolve credentials for %s: %s%n", login, e.getMessage());
                 }
             }
-            System.out.printf("Finished: %d processed, %d Node process failure(s).%n",
-                    logins.size(), failures);
+            System.out.printf("Finished: %d processed, %d failure(s).%n", logins.size(), failures);
             if (failures > 0) {
                 System.exit(1);
             }
-        } catch (IllegalArgumentException | IllegalStateException | IOException e) {
+        } catch (RuntimeException e) {
             System.err.println("Error: " + e.getMessage());
             System.err.println("Use --help for usage.");
             System.exit(2);
@@ -63,8 +54,7 @@ public final class Main {
     private static void printUsage() {
         System.out.println("4sharedCallAccessToken");
         System.out.println("Usage: java -jar 4sharedCallAccessToken-1.0.0-jar-with-dependencies.jar [--dry-run] [--limit N] [--login EMAIL]");
-        System.out.println("By default, runs the copied LOGIN, LOGIN_OLD, and LOGIN_DOWNLOAD lists once each.");
-        System.out.println("BANIDOS entries are excluded. Node inspector pauses at startup by default.");
+        System.out.println("Resolves existing credentials or authorizes and stores missing credentials via CredentialProvider.resolve(login).");
     }
 
     private record Options(boolean help, boolean dryRun, int limit, String login) {

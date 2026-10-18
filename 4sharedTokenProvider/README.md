@@ -1,6 +1,6 @@
 # 4shared Token Provider
 
-Independent token access module. It has no dependency on `4sharedjava`, `ClientMaloi`, `GetPullConnections`, or the old OAuth library. If a stored accessor is unavailable, it invokes `4sharedCallAccessToken` to perform the interactive 4shared login through the configured Node/Puppeteer script, then completes OAuth token exchange and storage itself.
+Independent token access module. It has no dependency on `4sharedjava`, `ClientMaloi`, `GetPullConnections`, or the old OAuth library. If a stored accessor is unavailable, it performs the interactive 4shared login through the configured Node/Puppeteer script, then completes OAuth token exchange and storage itself. The Node helper lives in this module; the `4sharedCallAccessToken` CLI depends on this provider and invokes `CredentialProvider.resolve(login)` for each selected login.
 
 Token values are stored per login in MongoDB under `accounts.accessor.accessToken` and `accounts.accessor.tokenSecret`. This provider reads those fields directly using the MongoDB Java Sync Driver and keeps the old 50-minute accessor freshness rule. If the account/accessor is missing, incomplete, or stale, it starts OAuth 1.0a: requests a temporary token, passes the generated authorization URL and login to the Node login flow, receives the verifier on a short-lived localhost callback, exchanges it for access credentials, and upserts the accessor into MongoDB. The login flow requires the user to sign in and approve access; no password is embedded or submitted by this project.
 

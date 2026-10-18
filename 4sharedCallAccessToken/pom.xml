@@ -12,13 +12,13 @@
 
     <artifactId>4sharedCallAccessToken</artifactId>
     <name>4shared Call Access Token</name>
-    <description>Runs the legacy login list through the configured Node/Puppeteer helper.</description>
+    <description>Resolves the legacy login list through CredentialProvider.</description>
     
     <dependencies>
         <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <scope>test</scope>
+            <groupId>br.com.aloi</groupId>
+            <artifactId>4shared-token-provider</artifactId>
+            <version>${project.version}</version>
         </dependency>
     </dependencies>
     <build>

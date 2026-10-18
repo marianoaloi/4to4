@@ -1,4 +1,4 @@
-package br.com.aloi.callaccesstoken;
+package br.com.aloi.tokenprovider;
 
 import java.nio.file.Path;
 

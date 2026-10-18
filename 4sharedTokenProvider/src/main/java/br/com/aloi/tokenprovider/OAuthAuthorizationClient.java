@@ -1,6 +1,5 @@
 package br.com.aloi.tokenprovider;
 
-import br.com.aloi.callaccesstoken.InteractiveLogin;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -64,15 +63,19 @@ final class OAuthAuthorizationClient {
                     
             System.out.printf("\"%s\",%n\"%s\",%n",
                     login, authorizationUri);
-            InteractiveLogin.authorize(login, authorizationUri);
-
-            Callback callback = callbackResult.get(settings.authorizationTimeout().toMillis(), TimeUnit.MILLISECONDS);
+            CompletableFuture<Void> interactiveLogin = CompletableFuture.runAsync(
+                    () -> InteractiveLogin.authorize(login, authorizationUri));
+            CompletableFuture.allOf(callbackResult, interactiveLogin)
+                    .get(settings.authorizationTimeout().toMillis(), TimeUnit.MILLISECONDS);
+            Callback callback = callbackResult.join();
             if (!requestToken.equals(callback.requestToken())) {
                 throw new CredentialException("4shared returned a callback for a different authorization request");
             }
-            Map<String, String> exchangeParameters = Map.of(
-                    "oauth_token", requestToken,
-                    "oauth_verifier", callback.verifier());
+            Map<String, String> exchangeParameters = new LinkedHashMap<>();
+            exchangeParameters.put("oauth_token", requestToken);
+            if (callback.verifier() != null && !callback.verifier().isBlank()) {
+                exchangeParameters.put("oauth_verifier", callback.verifier());
+            }
             Map<String, String> accessResponse = getForm(oauthRequestUri(
                     settings.accessTokenUri(), exchangeParameters, requestToken, requestSecret));
             return new TokenPair(required(accessResponse, "oauth_token"),
@@ -87,7 +90,7 @@ final class OAuthAuthorizationClient {
             if (cause instanceof CredentialException credentialException) {
                 throw credentialException;
             }
-            throw new CredentialException("Could not receive the 4shared authorization callback", cause);
+            throw new CredentialException("Interactive login or callback processing failed", cause);
         } catch (IOException | GeneralSecurityException e) {
             throw new CredentialException("Could not complete the 4shared OAuth authorization request", e);
         } finally {
@@ -143,8 +146,7 @@ final class OAuthAuthorizationClient {
                 throw new CredentialException("4shared authorization was denied or cancelled");
             }
             String token = required(parameters, "oauth_token");
-            System.out.printf("Received 4shared OAuth callback for token %s%n", token);
-            String verifier = "" ; //parameters.get("oauth_verifier");
+            String verifier = parameters.get("oauth_verifier");
             callbackResult.complete(new Callback(token, verifier));
         } catch (RuntimeException e) {
             status = 400;
