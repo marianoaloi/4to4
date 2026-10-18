@@ -15,6 +15,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>br.com.aloi</groupId>
+            <artifactId>4sharedCallAccessToken</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.mongodb</groupId>
             <artifactId>mongodb-driver-sync</artifactId>
         </dependency>

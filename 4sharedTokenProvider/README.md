@@ -1,8 +1,8 @@
 # 4shared Token Provider
 
-Independent token access module. It has no dependency on `4sharedjava`, `ClientMaloi`, `GetPullConnections`, or the old OAuth library.
+Independent token access module. It has no dependency on `4sharedjava`, `ClientMaloi`, `GetPullConnections`, or the old OAuth library. If a stored accessor is unavailable, it invokes `4sharedCallAccessToken` to perform the interactive 4shared login through the configured Node/Puppeteer script, then completes OAuth token exchange and storage itself.
 
-Token values are stored per login in MongoDB under `accounts.accessor.accessToken` and `accounts.accessor.tokenSecret`. This provider reads those fields directly using the MongoDB Java Sync Driver and keeps the old 50-minute accessor freshness rule. If the account/accessor is missing, incomplete, or stale, it starts OAuth 1.0a: requests a temporary token, opens the 4shared authorization page, receives the verifier on a short-lived localhost callback, exchanges it for access credentials, and upserts the accessor into MongoDB. The browser step requires the user to sign in and approve access; no password is embedded or submitted by this project.
+Token values are stored per login in MongoDB under `accounts.accessor.accessToken` and `accounts.accessor.tokenSecret`. This provider reads those fields directly using the MongoDB Java Sync Driver and keeps the old 50-minute accessor freshness rule. If the account/accessor is missing, incomplete, or stale, it starts OAuth 1.0a: requests a temporary token, passes the generated authorization URL and login to the Node login flow, receives the verifier on a short-lived localhost callback, exchanges it for access credentials, and upserts the accessor into MongoDB. The login flow requires the user to sign in and approve access; no password is embedded or submitted by this project.
 
 Consumer key/secret, MongoDB URI, and account login are configuration values and are not embedded in source. OAuth secrets are redacted from object `toString()` and CLI output.
 

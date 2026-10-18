@@ -15,7 +15,11 @@ final class NodeLoginRunner {
     }
 
     RunResult run(String login) throws IOException, InterruptedException {
-        Process process = new ProcessBuilder(commandFor(login))
+        return run(login, settings.tokenProviderLink());
+    }
+
+    RunResult run(String login, String tokenProviderLink) throws IOException, InterruptedException {
+        Process process = new ProcessBuilder(commandFor(login, tokenProviderLink))
                 .directory(settings.script().getParent().toFile())
                 .redirectErrorStream(true)
                 .start();
@@ -34,6 +38,10 @@ final class NodeLoginRunner {
     }
 
     List<String> commandFor(String login) {
+        return commandFor(login, settings.tokenProviderLink());
+    }
+
+    List<String> commandFor(String login, String tokenProviderLink) {
         List<String> command = new ArrayList<>();
         command.add(settings.executable());
         if (settings.inspectAtStart()) {
@@ -42,7 +50,7 @@ final class NodeLoginRunner {
         command.add(settings.script().toString());
         command.add(settings.loginPage());
         command.add(login);
-        command.add(settings.tokenProviderLink());
+        command.add(tokenProviderLink);
         command.add("querover");
         return List.copyOf(command);
     }

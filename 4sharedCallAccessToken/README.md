@@ -29,7 +29,7 @@ The runner starts Node with `--inspect-brk` before the script (the correct Node 
 3. `FOURSHARED_TOKEN_PROVIDER_LINK` (empty if unset)
 4. `querover`
 
-The current `index.js` reads the login page and login from `process.argv[2]` and `process.argv[3]`; it does not currently consume the provider-link argument. `querover` is recognized by the existing `util.js` and enables visible Chrome.
+The current `index.js` reads the login page and login from `process.argv[2]` and `process.argv[3]`. When invoked by `4sharedTokenProvider`, argument 4 is the OAuth authorization URL generated for that login; the standalone runner uses `FOURSHARED_TOKEN_PROVIDER_LINK`. `querover` is recognized by the existing `util.js` and enables visible Chrome.
 
 | Environment variable | Default |
 |---|---|
@@ -39,4 +39,4 @@ The current `index.js` reads the login page and login from `process.argv[2]` and
 | `FOURSHARED_TOKEN_PROVIDER_LINK` | empty string |
 | `FOURSHARED_NODE_INSPECT_BRK` | `true` |
 
-With inspector mode enabled, Node pauses at startup until a debugger attaches. Runs are sequential so the default inspector port can be reused. The runner recognizes the current script's `funcionou` and `Deu ruim` output and treats missing/failed success output as a failure. This runner does not read or store OAuth token secrets.
+With inspector mode enabled, the standalone runner pauses at startup until a debugger attaches. The provider integration disables that pause so authentication can run during provider startup. Runs are sequential so the default inspector port can be reused. The runner recognizes the current script's `funcionou` and `Deu ruim` output and treats missing/failed success output as a failure. OAuth token exchange and storage remain in `4sharedTokenProvider`.

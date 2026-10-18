@@ -1,10 +1,11 @@
 package br.com.aloi.tokenprovider;
 
+import br.com.aloi.callaccesstoken.InteractiveLogin;
+
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.bson.Document;
 
-import java.awt.Desktop;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -60,7 +61,7 @@ final class OAuthAuthorizationClient {
 
             System.out.printf("Authorize 4shared login %s in the browser. If it does not open, visit:%n%s%n",
                     login, authorizationUri);
-            openBrowser(authorizationUri);
+            InteractiveLogin.authorize(login, authorizationUri);
 
             Callback callback = callbackResult.get(settings.authorizationTimeout().toMillis(), TimeUnit.MILLISECONDS);
             if (!requestToken.equals(callback.requestToken())) {
@@ -139,7 +140,7 @@ final class OAuthAuthorizationClient {
                 throw new CredentialException("4shared authorization was denied or cancelled");
             }
             String token = required(parameters, "oauth_token");
-            String verifier = ""; //required(parameters, "oauth_verifier");
+            String verifier = required(parameters, "oauth_verifier");
             callbackResult.complete(new Callback(token, verifier));
         } catch (RuntimeException e) {
             status = 400;
@@ -207,16 +208,6 @@ final class OAuthAuthorizationClient {
         String query = parameters.entrySet().stream().map(e -> encode(e.getKey()) + "=" + encode(e.getValue()))
                 .reduce((a, b) -> a + "&" + b).orElse("");
         return URI.create(base.toASCIIString() + (base.getRawQuery() == null ? "?" : "&") + query);
-    }
-
-    private static void openBrowser(URI uri) {
-        if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-            try {
-                Desktop.getDesktop().browse(uri);
-            } catch (IOException | UnsupportedOperationException ignored) {
-                // The authorization URL is printed above so the user can open it manually.
-            }
-        }
     }
 
     private static String required(Map<String, String> values, String key) {
