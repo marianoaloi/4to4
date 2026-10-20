@@ -47,6 +47,10 @@ final class NodeLoginRunner {
         if (settings.inspectAtStart()) {
             command.add("--inspect-brk");
         }
+        if (settings.script().toString().endsWith(".ts")) {
+            command.add("-r");
+            command.add("ts-node/register");
+        }
         command.add(settings.script().toString());
         command.add(settings.loginPage());
         command.add(login);

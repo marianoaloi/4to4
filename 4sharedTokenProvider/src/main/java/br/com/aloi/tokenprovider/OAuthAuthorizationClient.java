@@ -63,11 +63,9 @@ final class OAuthAuthorizationClient {
                     
             System.out.printf("\"%s\",%n\"%s\",%n",
                     login, authorizationUri);
-            CompletableFuture<Void> interactiveLogin = CompletableFuture.runAsync(
-                    () -> InteractiveLogin.authorize(login, authorizationUri));
-            CompletableFuture.allOf(callbackResult, interactiveLogin)
-                    .get(settings.authorizationTimeout().toMillis(), TimeUnit.MILLISECONDS);
-            Callback callback = callbackResult.join();
+            InteractiveLogin.authorize(login, authorizationUri);
+
+            Callback callback = callbackResult.get(settings.authorizationTimeout().toMillis(), TimeUnit.MILLISECONDS);
             if (!requestToken.equals(callback.requestToken())) {
                 throw new CredentialException("4shared returned a callback for a different authorization request");
             }
@@ -90,7 +88,7 @@ final class OAuthAuthorizationClient {
             if (cause instanceof CredentialException credentialException) {
                 throw credentialException;
             }
-            throw new CredentialException("Interactive login or callback processing failed", cause);
+            throw new CredentialException("Could not receive the 4shared authorization callback", cause);
         } catch (IOException | GeneralSecurityException e) {
             throw new CredentialException("Could not complete the 4shared OAuth authorization request", e);
         } finally {
@@ -146,7 +144,11 @@ final class OAuthAuthorizationClient {
                 throw new CredentialException("4shared authorization was denied or cancelled");
             }
             String token = required(parameters, "oauth_token");
+            System.out.printf("Received 4shared OAuth callback for token %s%n", token);
             String verifier = parameters.get("oauth_verifier");
+            if (verifier == null || verifier.isBlank()) {
+               verifier = "";
+            }
             callbackResult.complete(new Callback(token, verifier));
         } catch (RuntimeException e) {
             status = 400;

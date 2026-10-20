@@ -6,7 +6,7 @@ record NodeSettings(String executable, Path script, String loginPage,
                     String tokenProviderLink, boolean inspectAtStart) {
     static NodeSettings fromEnvironment() {
         String script = value("FOURSHARED_NODE_SCRIPT",
-                "C:\\Users\\maria\\Documents\\4sharednode\\index.js");
+                "C:\\Users\\maria\\Documents\\4sharednode\\index.ts");
         String inspect = value("FOURSHARED_NODE_INSPECT_BRK", "true");
         if (!"true".equalsIgnoreCase(inspect) && !"false".equalsIgnoreCase(inspect)) {
             throw new IllegalArgumentException("FOURSHARED_NODE_INSPECT_BRK must be true or false");
