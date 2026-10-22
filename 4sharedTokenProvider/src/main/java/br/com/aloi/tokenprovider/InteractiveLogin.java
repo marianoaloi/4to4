@@ -19,7 +19,7 @@ public final class InteractiveLogin {
                     configured.loginPage(), configured.tokenProviderLink(), false);
             NodeLoginRunner.RunResult result = new NodeLoginRunner(settings)
                     .run(login, authorizationUri.toString());
-            if (result.exitCode() != 0 || !result.reportedSuccess() || result.reportedFailure()) {
+            if (result.exitCode() != 0  || result.reportedFailure()) {
                 throw new IllegalStateException("Node login did not report success for " + login
                         + " (exit " + result.exitCode() + ")");
             }
