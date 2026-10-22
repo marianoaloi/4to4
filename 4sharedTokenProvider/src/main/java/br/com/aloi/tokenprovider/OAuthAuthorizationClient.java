@@ -6,6 +6,9 @@ import com.sun.net.httpserver.HttpServer;
 import org.bson.Document;
 
 import java.io.IOException;
+import java.net.CookieManager;
+import java.net.CookiePolicy;
+import java.net.HttpCookie;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URLDecoder;
@@ -43,6 +46,10 @@ final class OAuthAuthorizationClient {
     }
 
     TokenPair authorize(String login) {
+        return authorize(login, List.of());
+    }
+
+    TokenPair authorize(String login, List<Document> accountCookies) {
         HttpServer callbackServer = null;
         CompletableFuture<Callback> callbackResult = new CompletableFuture<>();
         try {
@@ -58,14 +65,21 @@ final class OAuthAuthorizationClient {
             String requestSecret = required(requestTokenResponse, "oauth_token_secret");
             URI authorizationUri = withQuery(settings.authorizationUri(), Map.of("oauth_token", requestToken));
 
-            System.out.printf("Authorize 4shared login %s in the browser. If it does not open, visit:%n%s%n",
-                    login, authorizationUri);
-                    
-            System.out.printf("\"%s\",%n\"%s\",%n",
-                    login, authorizationUri);
-            InteractiveLogin.authorize(login, authorizationUri);
-
-            Callback callback = callbackResult.get(settings.authorizationTimeout().toMillis(), TimeUnit.MILLISECONDS);
+            Callback callback = null;
+            if (accountCookies != null && !accountCookies.isEmpty()) {
+                try {
+                    callback = authorizeWithCookies(authorizationUri, callbackUri, accountCookies);
+                } catch (IOException | RuntimeException e) {
+                    System.out.printf("Saved-cookie authorization request failed for %s; opening browser fallback.%n", login);
+                }
+            }
+            if (callback == null) {
+                System.out.printf("Saved cookies could not complete authorization for %s; opening browser.%n", login);
+                System.out.printf("If the browser does not open, visit:%n%s%n", authorizationUri);
+                // Node/Puppeteer is only needed when saved cookies cannot complete authorization.
+                InteractiveLogin.authorize(login, authorizationUri);
+                callback = callbackResult.get(settings.authorizationTimeout().toMillis(), TimeUnit.MILLISECONDS);
+            }
             if (!requestToken.equals(callback.requestToken())) {
                 throw new CredentialException("4shared returned a callback for a different authorization request");
             }
@@ -96,6 +110,113 @@ final class OAuthAuthorizationClient {
                 callbackServer.stop(0);
             }
         }
+    }
+
+    /** Try the authorization redirects with the stored 4shared cookies, without starting a browser. */
+    private Callback authorizeWithCookies(URI authorizationUri, URI callbackUri, List<Document> cookieDocuments)
+            throws IOException, InterruptedException {
+        CookieManager cookieManager = new CookieManager(null, CookiePolicy.ACCEPT_ALL);
+        addCookies(cookieManager, authorizationUri, cookieDocuments);
+        if (cookieManager.getCookieStore().getCookies().isEmpty()) {
+            return null;
+        }
+
+        java.net.http.HttpClient cookieHttp = java.net.http.HttpClient.newBuilder()
+                .connectTimeout(HTTP_TIMEOUT)
+                .followRedirects(java.net.http.HttpClient.Redirect.NEVER)
+                .cookieHandler(cookieManager)
+                .build();
+        URI current = authorizationUri;
+        for (int redirects = 0; redirects < 12; redirects++) {
+            var request = java.net.http.HttpRequest.newBuilder(current)
+                    .timeout(HTTP_TIMEOUT)
+                    .GET()
+                    .build();
+            var response = cookieHttp.send(request, java.net.http.HttpResponse.BodyHandlers.discarding());
+            int status = response.statusCode();
+            if (status < 300 || status >= 400) {
+                // A rendered login/consent page needs the interactive browser flow.
+                return null;
+            }
+            String location = response.headers().firstValue("Location").orElse(null);
+            if (location == null || location.isBlank()) {
+                return null;
+            }
+            URI next = current.resolve(location);
+            if (isCallback(next, callbackUri)) {
+                Map<String, String> parameters = parseForm(next.getRawQuery());
+                if (parameters.containsKey("oauth_problem")) {
+                    return null;
+                }
+                String token = parameters.get("oauth_token");
+                if (token == null || token.isBlank()) {
+                    return null;
+                }
+                String verifier = parameters.getOrDefault("oauth_verifier", "");
+                return new Callback(token, verifier);
+            }
+            if (!isFoursharedHttps(next)) {
+                // Never forward account cookies to a third-party redirect.
+                return null;
+            }
+            current = next;
+        }
+        return null;
+    }
+
+    private static void addCookies(CookieManager manager, URI target, List<Document> documents) {
+        String targetHost = target.getHost();
+        long nowSeconds = Instant.now().getEpochSecond();
+        for (Document document : documents) {
+            String name = document.getString("name");
+            String value = document.getString("value");
+            if (name == null || name.isBlank() || value == null) continue;
+
+            String domain = document.getString("domain");
+            if (domain != null && !isFoursharedCookieDomain(domain)) continue;
+            String path = document.getString("path");
+            if (Boolean.TRUE.equals(document.get("secure")) && !"https".equalsIgnoreCase(target.getScheme())) continue;
+
+            Object expiresValue = document.get("expires");
+            if (expiresValue instanceof Number expires && expires.doubleValue() > 0) {
+                long maxAge = (long) expires.doubleValue() - nowSeconds;
+                if (maxAge <= 0) continue;
+            }
+
+            try {
+                HttpCookie cookie = new HttpCookie(name, value);
+                cookie.setDomain(domain == null || domain.isBlank() ? targetHost : domain);
+                cookie.setPath(path == null || path.isBlank() ? "/" : path);
+                cookie.setSecure(Boolean.TRUE.equals(document.get("secure")));
+                cookie.setHttpOnly(Boolean.TRUE.equals(document.get("httpOnly")));
+                if (expiresValue instanceof Number expires && expires.doubleValue() > 0) {
+                    cookie.setMaxAge((long) expires.doubleValue() - nowSeconds);
+                }
+                String originHost = domain == null || domain.isBlank()
+                        ? targetHost : domain.replaceFirst("^\\.+", "");
+                manager.getCookieStore().add(URI.create("https://" + originHost + "/"), cookie);
+            } catch (IllegalArgumentException ignored) {
+                // Skip malformed/unsupported cookie records and let interactive login handle them.
+            }
+        }
+    }
+
+    private static boolean isFoursharedCookieDomain(String domain) {
+        String normalizedDomain = domain.toLowerCase().replaceFirst("^\\.+", "");
+        return "4shared.com".equals(normalizedDomain) || normalizedDomain.endsWith(".4shared.com");
+    }
+
+    private static boolean isFoursharedHttps(URI uri) {
+        String host = uri.getHost();
+        return "https".equalsIgnoreCase(uri.getScheme()) && host != null
+                && ("4shared.com".equalsIgnoreCase(host) || host.toLowerCase().endsWith(".4shared.com"));
+    }
+
+    private static boolean isCallback(URI candidate, URI callbackUri) {
+        return "http".equalsIgnoreCase(candidate.getScheme())
+                && callbackUri.getHost().equalsIgnoreCase(candidate.getHost())
+                && callbackUri.getPort() == candidate.getPort()
+                && callbackUri.getPath().equals(candidate.getPath());
     }
 
     Document getUser(TokenPair tokens) {

@@ -8,6 +8,7 @@ public final class LoginCatalog {
     private LoginCatalog() { }
 
     public static final List<String> BANNED = List.of(
+        "a.l.l.i.g.a.t.o.r.l.a.ndrol.a@gmail.com"
     );
 
     public static final List<String> CURRENT = List.of(

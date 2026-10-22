@@ -9,6 +9,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 
 import static com.mongodb.client.model.Filters.eq;
@@ -41,7 +42,10 @@ public final class CredentialProvider {
             }
 
             OAuthAuthorizationClient authorization = new OAuthAuthorizationClient(settings);
-            OAuthAuthorizationClient.TokenPair tokens = authorization.authorize(normalizedLogin);
+            List<Document> cookies = account == null
+                    ? List.of()
+                    : account.getList("cookies", Document.class, List.of());
+            OAuthAuthorizationClient.TokenPair tokens = authorization.authorize(normalizedLogin, cookies);
             Document user = authorization.getUser(tokens);
             String authorizedLogin = user.getString("email");
             if (authorizedLogin == null || !normalizedLogin.equalsIgnoreCase(authorizedLogin.trim())) {
