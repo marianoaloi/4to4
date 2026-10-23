@@ -1,5 +1,6 @@
 package br.com.aloi.callaccesstoken;
 
+import org.bson.Document;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -10,10 +11,15 @@ import static org.junit.jupiter.api.Assertions.*;
 class NodeLoginRunnerTest {
     @Test
     void catalogContainsUniqueNonBannedAccounts() {
-        List<String> logins = LoginCatalog.allActiveLogins();
+        Document catalog = Document.parse("""
+                {"banned":["blocked@example.test"],
+                 "current":["active@example.test","active@example.test"],
+                 "old":["blocked@example.test","old@example.test"],
+                 "download":["download@example.test"]}
+                """);
+        List<String> logins = LoginCatalog.activeLogins(catalog);
         assertFalse(logins.isEmpty());
-        assertEquals(logins.size(), logins.stream().distinct().count());
-        assertTrue(logins.stream().noneMatch(LoginCatalog.BANNED::contains));
+        assertEquals(List.of("active@example.test", "old@example.test", "download@example.test"), logins);
     }
 
     @Test

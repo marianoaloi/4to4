@@ -17,7 +17,10 @@ public final class LoginCatalog {
     private LoginCatalog() { }
 
     public static List<String> allActiveLogins() {
-        Document catalog = readCatalog();
+        return activeLogins(readCatalog());
+    }
+
+    static List<String> activeLogins(Document catalog) {
         List<String> banned = readLogins(catalog, "banned");
         var unique = new LinkedHashSet<String>();
         unique.addAll(readLogins(catalog, "current"));
