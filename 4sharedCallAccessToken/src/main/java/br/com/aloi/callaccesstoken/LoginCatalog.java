@@ -1,285 +1,56 @@
 package br.com.aloi.callaccesstoken;
 
+import org.bson.Document;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
-/** Login lists copied from legacy ClientMaloi.Logins. */
+/** Loads the private login catalog from a local JSON file. */
 public final class LoginCatalog {
+    private static final Path CATALOG_PATH = Path.of("4sharedCallAccessToken", "logins.json");
+
     private LoginCatalog() { }
 
-    public static final List<String> BANNED = List.of(
-        "a.l.l.i.g.a.t.o.r.l.a.ndrol.a@gmail.com"
-    );
-
-    public static final List<String> CURRENT = List.of(
-            "a.l.l.i.g.a.t.o.rl.a.n.d.r.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.an.dr.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.androla@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.n.d.r.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.n.d.ro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.n.d.rol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.n.d.rola@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.n.dr.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.n.dr.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.n.dr.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.n.dro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.n.drol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.n.drola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.landro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.n.d.r.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.landrola@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.n.d.r.o.l.a@gmail.com"
-    );
-
-    public static final List<String> DOWNLOAD = List.of(
-            "a.l.l.i.g.a.t.o.r.l.a.ndr.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.ndrol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.an.d.r.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.andr.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.lan.dr.ola@gmail.com",
-            "allig.atorlandrola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.n.d.r.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.an.drol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.land.r.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.n.dr.ol.a@gmail.com",
-            "alligatorl.androla@gmail.com",
-            "a.l.l.i.g.a.t.o.r.land.rol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.n.d.ro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.landr.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.n.dr.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.an.d.r.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.ndro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.and.rola@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.nd.r.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.an.dr.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.n.dr.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.lan.dr.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.androl.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.n.dro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.lan.drola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.an.d.r.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.an.d.r.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.nd.rol.a@gmail.com"
-    );
-
-    public static final List<String> OLD = List.of(
-            "a.l.l.i.g.a.t.o.rl.a.n.dro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.and.r.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.and.r.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.and.r.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.and.r.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.and.ro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.and.ro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.and.rol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.and.rola@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.andr.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.andr.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.andr.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.andr.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.andro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.andro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.androl.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.androla@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.n.d.r.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.n.d.r.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.n.d.r.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.n.d.r.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.n.d.ro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.n.d.ro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.n.d.rol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.n.d.rola@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.n.dr.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.n.dr.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.n.dr.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.n.dr.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.n.dro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.n.dro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.n.drol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.n.drola@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.nd.r.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.nd.r.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.nd.r.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.nd.r.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.nd.ro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.nd.ro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.nd.rol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.nd.rola@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.ndr.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.ndr.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.ndr.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.ndro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.ndro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.ndrol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rla.ndrola@gmail.com",
-            "a.l.l.i.g.a.t.o.rlan.d.r.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rlan.d.r.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.n.dr.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.nd.r.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.an.dro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.n.dro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.n.drol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.ndrol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.nd.rola@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.ndrola@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.ndro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.an.d.rola@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.ndr.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.an.d.r.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.an.d.rol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.and.ro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.an.dr.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.an.dro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.n.d.r.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.an.dr.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.n.d.r.ol.a@gmail.com",
-            "alligatorland.rola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.land.r.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.lan.d.r.o.la@gmail.com",
-            "a.llig.atorlandrola@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.nd.ro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.an.d.ro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.nd.r.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.ndr.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.an.d.ro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.ndro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.lan.d.ro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.n.dr.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.an.d.ro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.landr.o.la@gmail.com",
-            "alligatorlandrola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.and.ro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.ndrola@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.an.drol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.n.d.ro.l.a@gmail.com",
-            "a.lligatorlandrol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.n.d.r.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.n.dr.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.n.drola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.nd.ro.l.a@gmail.com",
-            "al.ligatorlandrola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.n.d.r.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.ndr.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.ndr.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.nd.rol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.land.ro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.land.r.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.ndr.ola@gmail.com",
-            "alligat.orlandrola@gmail.com",
-            "alli.gatorlandrol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.lan.d.rola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.n.d.rola@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.nd.ro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.ndro.l.a@gmail.com",
-            "alligatorla.ndrola@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.an.drola@gmail.com",
-            "al.ligatorlandrol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.and.r.o.la@gmail.com",
-            "alligato.rlandrola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.an.d.rol.a@gmail.com",
-            "alligatorlandr.ol.a@gmail.com",
-            "alligatorlandrol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.and.rol.a@gmail.com",
-            "a.ll.igatorlandrola@gmail.com",
-            "a.lligatorlandrola@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.an.dr.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.nd.ro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.andr.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.lan.d.ro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.lan.dro.l.a@gmail.com",
-            "a.lli.gatorlandrola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.an.d.rola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.lan.drol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.ndr.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.nd.r.o.la@gmail.com",
-            "alligatorlan.drola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.an.drola@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.an.dr.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.an.d.r.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.and.r.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.n.dro.l.a@gmail.com",
-            "all.igatorlandrol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.ndr.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.nd.rola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.andr.ola@gmail.com",
-            "alligatorlandro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.an.d.r.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.n.drol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.land.ro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.an.d.r.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.nd.r.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.landr.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.an.dro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.nd.ro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.n.drola@gmail.com",
-            "alligator.landrola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.n.dr.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.ndr.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.ndrol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.nd.r.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.land.r.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.an.d.ro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.landr.ola@gmail.com",
-            "a.lliga.torlandrola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.lan.d.rol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.an.dr.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.lan.d.r.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.nd.r.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.nd.rol.a@gmail.com",
-            "alli.gatorlandrola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.nd.r.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.ndro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.n.dr.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.n.d.ro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.lan.d.r.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.n.d.ro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.landrol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.n.d.r.ola@gmail.com",
-            "alliga.torlandrola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.lan.d.r.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.nd.ro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.lan.dr.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.n.d.r.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.lan.dro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.nd.rola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.n.d.r.ola@gmail.com",
-            "alligatorlandro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.n.d.rola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.ndr.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.n.d.rol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.ndrola@gmail.com",
-            "a.l.ligatorlandrola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.andro.la@gmail.com",
-            "alligatorlandr.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.ndr.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.lan.dr.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.n.d.rol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.landro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.and.r.ola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.n.d.ro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.a.nd.r.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.nd.r.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.land.rola@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.n.dro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.nd.r.o.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.ndr.ol.a@gmail.com",
-            "all.igatorlandrola@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.an.dro.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.a.nd.r.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.rl.an.dr.o.la@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.andr.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.andro.l.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.l.and.r.ol.a@gmail.com",
-            "a.l.l.i.g.a.t.o.r.la.ndro.la@gmail.com"
-    );
-
-    /** Legacy source order, de-duplicated, with entries in BANIDOS excluded. */
     public static List<String> allActiveLogins() {
-        var banned = java.util.Set.copyOf(BANNED);
+        Document catalog = readCatalog();
+        List<String> banned = readLogins(catalog, "banned");
         var unique = new LinkedHashSet<String>();
-        unique.addAll(CURRENT);
-        unique.addAll(OLD);
-        unique.addAll(DOWNLOAD);
-        unique.removeAll(banned);
+        unique.addAll(readLogins(catalog, "current"));
+        unique.addAll(readLogins(catalog, "old"));
+        unique.addAll(readLogins(catalog, "download"));
+        unique.removeAll(Set.copyOf(banned));
         return List.copyOf(unique);
+    }
+
+    private static Document readCatalog() {
+        if (!Files.isRegularFile(CATALOG_PATH)) {
+            throw new IllegalStateException("Login catalog not found at " + CATALOG_PATH
+                    + ". Copy 4sharedCallAccessToken/logins.example.json to logins.json and fill in the private email lists.");
+        }
+        try {
+            return Document.parse(Files.readString(CATALOG_PATH));
+        } catch (IOException | RuntimeException e) {
+            throw new IllegalStateException("Could not read login catalog at " + CATALOG_PATH + ". Check that it is valid JSON.", e);
+        }
+    }
+
+    private static List<String> readLogins(Document catalog, String key) {
+        Object value = catalog.get(key);
+        if (!(value instanceof List<?> entries)) {
+            throw new IllegalStateException("Login catalog field '" + key + "' must be a JSON array of email strings.");
+        }
+        List<String> logins = new ArrayList<>(entries.size());
+        for (Object entry : entries) {
+            if (!(entry instanceof String login) || login.isBlank()) {
+                throw new IllegalStateException("Login catalog field '" + key + "' must contain only non-empty strings.");
+            }
+            logins.add(login);
+        }
+        return List.copyOf(logins);
     }
 }
