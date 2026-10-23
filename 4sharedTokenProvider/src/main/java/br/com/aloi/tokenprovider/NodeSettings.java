@@ -13,7 +13,7 @@ record NodeSettings(String executable, Path script, String loginPage,
         }
         return new NodeSettings(value("FOURSHARED_NODE_EXECUTABLE", "node"),
                 Path.of(script).toAbsolutePath().normalize(),
-                value("FOURSHARED_LOGIN_URL", "https://www.4shared.com/web/login"),
+                value("FOURSHARED_LOGIN_URL", "https://www.4shared.com/web/logout"),
                 value("FOURSHARED_TOKEN_PROVIDER_LINK", ""),
                 Boolean.parseBoolean(inspect));
     }
