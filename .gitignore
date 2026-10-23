@@ -8,8 +8,7 @@
 # Codex local configuration
 .codex/
 # Claude Flow runtime data
-.claude-flow/data/
-.claude-flow/logs/
+.claude-flow/**
 # Environment variables
 .env
 .env.local
@@ -20,3 +19,4 @@ AGENTS.md
 # Private login catalog
 4sharedCallAccessToken/logins.json
 .vscode/launch.json
+.swarm/**

@@ -7,7 +7,7 @@ record NodeSettings(String executable, Path script, String loginPage,
     static NodeSettings fromEnvironment() {
         String script = value("FOURSHARED_NODE_SCRIPT",
                 "C:\\Users\\maria\\Documents\\4sharednode\\index.js");
-        String inspect = value("FOURSHARED_NODE_INSPECT_BRK", "true");
+        String inspect = value("FOURSHARED_NODE_INSPECT_BRK", "false");
         if (!"true".equalsIgnoreCase(inspect) && !"false".equalsIgnoreCase(inspect)) {
             throw new IllegalArgumentException("FOURSHARED_NODE_INSPECT_BRK must be true or false");
         }

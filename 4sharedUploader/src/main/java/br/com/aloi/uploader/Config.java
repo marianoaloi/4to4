@@ -3,6 +3,8 @@ package br.com.aloi.uploader;
 import br.com.aloi.tokenprovider.AccountCredentials;
 import br.com.aloi.tokenprovider.CredentialProvider;
 import br.com.aloi.tokenprovider.ProviderSettings;
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
 
 import java.net.URI;
 import java.time.Duration;
@@ -22,7 +24,10 @@ record Config(String consumerKey, String consumerSecret, String accessToken,
         String login = System.getenv("FOURSHARED_LOGIN");
         if (login != null && !login.isBlank()) {
             ProviderSettings settings = ProviderSettings.fromEnvironment();
-            AccountCredentials credentials = new CredentialProvider(settings).resolve(login);
+            AccountCredentials credentials;
+            try (MongoClient client = MongoClients.create(settings.mongoUri())) {
+                credentials = new CredentialProvider(settings, client).resolve(login);
+            }
             String rootFolderId = value("FOURSHARED_ROOT_FOLDER_ID", credentials.rootFolderId());
             if (rootFolderId == null || rootFolderId.isBlank()) {
                 throw new IllegalArgumentException("Could not determine the 4shared root folder ID");

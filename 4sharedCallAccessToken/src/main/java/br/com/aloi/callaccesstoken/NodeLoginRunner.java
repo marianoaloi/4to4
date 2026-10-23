@@ -37,7 +37,8 @@ final class NodeLoginRunner {
         List<String> command = new ArrayList<>();
         command.add(settings.executable());
         if (settings.inspectAtStart()) {
-            command.add("--inspect-brk");
+            // A random inspector port allows up to six Node login processes to run together.
+            command.add("--inspect-brk=0");
         }
         command.add(settings.script().toString());
         command.add(settings.loginPage());

@@ -3,10 +3,17 @@ package br.com.aloi.callaccesstoken;
 import br.com.aloi.tokenprovider.AccountCredentials;
 import br.com.aloi.tokenprovider.CredentialProvider;
 import br.com.aloi.tokenprovider.ProviderSettings;
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
 
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.Executors;
 
 public final class Main {
+    private static final int MAX_PARALLEL_LOGINS = 6;
+
     private Main() { }
 
     public static void main(String[] args) {
@@ -28,19 +35,40 @@ public final class Main {
                 return;
             }
 
-            CredentialProvider credentialProvider = new CredentialProvider(ProviderSettings.fromEnvironment());
+            ProviderSettings settings = ProviderSettings.fromEnvironment();
             int failures = 0;
-            for (String login : logins) {
-                try {
-                    AccountCredentials credentials = credentialProvider.resolve(login);
-                    System.out.printf("OAuth credentials are available for %s; secret values are redacted.%n",
-                            credentials.login());
-                } catch (RuntimeException e) {
-                    failures++;
-                    System.err.printf("Could not resolve credentials for %s: %s%n", login, e.getMessage());
+            try (MongoClient client = MongoClients.create(settings.mongoUri())) {
+                CredentialProvider credentialProvider = new CredentialProvider(settings, client);
+                try (var executor = Executors.newFixedThreadPool(Math.min(MAX_PARALLEL_LOGINS, logins.size()))) {
+            var completions = new ExecutorCompletionService<LoginResult>(executor);
+                for (String login : logins) {
+                    completions.submit(() -> {
+                        try {
+                            return new LoginResult(login, credentialProvider.resolve(login), null);
+                        } catch (RuntimeException e) {
+                            return new LoginResult(login, null, e);
+                        }
+                    });
                 }
+                for (int i = 0; i < logins.size(); i++) {
+                    LoginResult result = completions.take().get();
+                    if (result.error() == null) {
+                        System.out.printf("OAuth credentials are available for %s; secret values are redacted.%n",
+                                result.credentials().login());
+                    } else {
+                        failures++;
+                        System.err.printf("Could not resolve credentials for %s: %s%n",
+                                result.login(), result.error().getMessage());
+                    }
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Interrupted while resolving login credentials", e);
+            } catch (ExecutionException e) {
+                throw new IllegalStateException("A login worker failed unexpectedly", e.getCause());
+                }
+                System.out.printf("Finished: %d processed, %d failure(s).%n", logins.size(), failures);
             }
-            System.out.printf("Finished: %d processed, %d failure(s).%n", logins.size(), failures);
             if (failures > 0) {
                 System.exit(1);
             }
@@ -50,6 +78,8 @@ public final class Main {
             System.exit(2);
         }
     }
+
+    private record LoginResult(String login, AccountCredentials credentials, RuntimeException error) { }
 
     private static void printUsage() {
         System.out.println("4sharedCallAccessToken");

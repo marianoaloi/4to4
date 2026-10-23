@@ -27,7 +27,7 @@ class NodeLoginRunnerTest {
         var settings = new NodeSettings("node", Path.of("C:/4sharednode/index.js"),
                 "https://www.4shared.com/web/login", "provider-link", true);
         var command = new NodeLoginRunner(settings).commandFor("user@example.test");
-        assertEquals(List.of("node", "--inspect-brk", "C:\\4sharednode\\index.js",
+        assertEquals(List.of("node", "--inspect-brk=0", "C:\\4sharednode\\index.js",
                 "https://www.4shared.com/web/login", "user@example.test", "provider-link", "querover"), command);
     }
 

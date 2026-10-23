@@ -1,7 +1,6 @@
 package br.com.aloi.tokenprovider;
 
 import com.mongodb.client.MongoClient;
-import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
 import org.bson.Document;
 
@@ -17,14 +16,16 @@ import static com.mongodb.client.model.Filters.eq;
 /** Reads existing account accessor fields without depending on the legacy Java application. */
 public final class CredentialProvider {
     private final ProviderSettings settings;
+    private final MongoClient client;
     private final Clock clock;
 
-    public CredentialProvider(ProviderSettings settings) {
-        this(settings, Clock.systemUTC());
+    public CredentialProvider(ProviderSettings settings, MongoClient client) {
+        this(settings, client, Clock.systemUTC());
     }
 
-    CredentialProvider(ProviderSettings settings, Clock clock) {
+    CredentialProvider(ProviderSettings settings, MongoClient client, Clock clock) {
         this.settings = settings;
+        this.client = client;
         this.clock = clock;
     }
 
@@ -33,36 +34,34 @@ public final class CredentialProvider {
             throw new IllegalArgumentException("A 4shared login is required");
         }
         String normalizedLogin = login.trim();
-        try (MongoClient client = MongoClients.create(settings.mongoUri())) {
-            MongoCollection<Document> accounts = client.getDatabase(settings.database())
-                    .getCollection(settings.accountCollection());
-            Document account = accounts.find(eq("_id", normalizedLogin)).first();
-            if (!requiresAuthorization(account, settings, clock.instant())) {
-                return fromAccountDocument(normalizedLogin, account, settings, clock.instant());
-            }
-
-            OAuthAuthorizationClient authorization = new OAuthAuthorizationClient(settings);
-            List<Document> cookies = account == null
-                    ? List.of()
-                    : account.getList("cookies", Document.class, List.of());
-            OAuthAuthorizationClient.TokenPair tokens = authorization.authorize(normalizedLogin, cookies);
-            Document user = authorization.getUser(tokens);
-            String authorizedLogin = user.getString("email");
-            if (authorizedLogin == null || !normalizedLogin.equalsIgnoreCase(authorizedLogin.trim())) {
-                throw new CredentialException("The 4shared account authorized in the browser does not match the selected login");
-            }
-            Document accessor = new Document("created", Date.from(clock.instant()))
-                    .append("accessToken", tokens.accessToken())
-                    .append("tokenSecret", tokens.accessTokenSecret())
-                    .append("requestToken", tokens.requestToken())
-                    .append("user", user)
-                    .append("freeSize", user.get("freeSpace"));
-            accounts.updateOne(eq("_id", normalizedLogin),
-                    new Document("$set", new Document("accessor", accessor)),
-                    new com.mongodb.client.model.UpdateOptions().upsert(true));
-            return new AccountCredentials(normalizedLogin, settings.consumerKey(), settings.consumerSecret(),
-                    tokens.accessToken(), tokens.accessTokenSecret(), user.getString("rootFolderId"));
+        MongoCollection<Document> accounts = client.getDatabase(settings.database())
+                .getCollection(settings.accountCollection());
+        Document account = accounts.find(eq("_id", normalizedLogin)).first();
+        if (!requiresAuthorization(account, settings, clock.instant())) {
+            return fromAccountDocument(normalizedLogin, account, settings, clock.instant());
         }
+
+        OAuthAuthorizationClient authorization = new OAuthAuthorizationClient(settings);
+        List<Document> cookies = account == null
+                ? List.of()
+                : account.getList("cookies", Document.class, List.of());
+        OAuthAuthorizationClient.TokenPair tokens = authorization.authorize(normalizedLogin, cookies);
+        Document user = authorization.getUser(tokens);
+        String authorizedLogin = user.getString("email");
+        if (authorizedLogin == null || !normalizedLogin.equalsIgnoreCase(authorizedLogin.trim())) {
+            throw new CredentialException("The 4shared account authorized in the browser does not match the selected login");
+        }
+        Document accessor = new Document("created", Date.from(clock.instant()))
+                .append("accessToken", tokens.accessToken())
+                .append("tokenSecret", tokens.accessTokenSecret())
+                .append("requestToken", tokens.requestToken())
+                .append("user", user)
+                .append("freeSize", user.get("freeSpace"));
+        accounts.updateOne(eq("_id", normalizedLogin),
+                new Document("$set", new Document("accessor", accessor)),
+                new com.mongodb.client.model.UpdateOptions().upsert(true));
+        return new AccountCredentials(normalizedLogin, settings.consumerKey(), settings.consumerSecret(),
+                tokens.accessToken(), tokens.accessTokenSecret(), user.getString("rootFolderId"));
     }
 
     static boolean requiresAuthorization(Document account, ProviderSettings settings, Instant now) {

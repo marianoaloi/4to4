@@ -1,5 +1,8 @@
 	package br.com.aloi.tokenprovider;
 
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
+
 public final class Main {
     private Main() {
     }
@@ -16,10 +19,12 @@ public final class Main {
             System.exit(2);
         }
         try {
-            AccountCredentials credentials = new CredentialProvider(ProviderSettings.fromEnvironment())
-                    .resolve(args[0]);
-            System.out.printf("OAuth credentials are available for %s; secret values are redacted.%n",
-                    credentials.login());
+            ProviderSettings settings = ProviderSettings.fromEnvironment();
+            try (MongoClient client = MongoClients.create(settings.mongoUri())) {
+                AccountCredentials credentials = new CredentialProvider(settings, client).resolve(args[0]);
+                System.out.printf("OAuth credentials are available for %s; secret values are redacted.%n",
+                        credentials.login());
+            }
         } catch (RuntimeException e) {
             System.err.println("Could not resolve OAuth credentials: " + e.getMessage());
             System.exit(1);
