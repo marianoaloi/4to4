@@ -1,10 +1,11 @@
 # 4shared Connection
 
-Independent Java 21 Maven project for retrieving existing 4shared OAuth credentials and uploading files. The project has three modules:
+Independent Java 21 Maven project for retrieving existing 4shared OAuth credentials and uploading files. The project has four modules:
 
 - `4sharedTokenProvider` reads an account's stored OAuth accessor directly from MongoDB.
 - `4sharedUploader` signs and sends uploads and creates a runnable JAR containing its runtime dependencies.
 - `4sharedCallAccessToken` resolves the legacy login catalog by calling `CredentialProvider.resolve(login)` for each selected account.
+- `4sharedDomain` contains shared account and login types.
 
 No module imports, builds, or starts the legacy `4sharedjava`, `4sharedOauthOld`, or `ClientMaloi` application. The account document is read directly using the existing data shape: `_id` is the login, OAuth values are in `accessor.accessToken` and `accessor.tokenSecret`, and the optional root folder is `accessor.user.rootFolderId`. The prior 50-minute freshness window is preserved. If no usable accessor exists, the provider runs OAuth 1.0a in a browser, waits for a localhost callback, exchanges the verifier, and saves the resulting accessor with an upsert. The user completes sign-in and authorization in the browser; the interactive authorization uses the configured Node/Puppeteer helper without embedding the account password.
 
@@ -53,3 +54,7 @@ The uploader accepts one file or directory, walks directories recursively, keeps
 ## Modules
 
 Each module README documents its focused command/configuration surface. Unit tests exercise credential parsing and OAuth URL-encoding behavior without contacting MongoDB or 4shared.
+
+## Logging
+
+All modules include Lombok and SLF4J dependencies. The command-line modules use `@Slf4j` with Logback appenders that write to the console and a module-specific file under `logs/`: `4shared-uploader.log`, `4shared-token-provider.log`, or `4shared-call-access-token.log`. Files roll daily or at 10 MB, with 30 days of history and a 1 GB total cap. Operational log messages avoid OAuth token values and authorization URLs.

@@ -15,10 +15,12 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
+import lombok.extern.slf4j.Slf4j;
 
 import static com.mongodb.client.model.Filters.eq;
 
 /** Reads existing account accessor fields without depending on the legacy Java application. */
+@Slf4j
 public final class CredentialProvider {
     private final ProviderSettings settings;
     private final MongoClient client;
@@ -65,6 +67,7 @@ public final class CredentialProvider {
         accounts.updateOne(eq("_id", normalizedLogin),
                 new Document("$set", new Document("accessor", accessor)),
                 new com.mongodb.client.model.UpdateOptions().upsert(true));
+        log.info("OAuth credentials were refreshed and stored.");
         String rootFolderId = user.getString("rootFolderId");
         if (blank(rootFolderId) && account != null) {
             rootFolderId = account.getString("rootFolderId");

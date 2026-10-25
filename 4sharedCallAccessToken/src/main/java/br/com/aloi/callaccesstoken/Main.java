@@ -13,7 +13,9 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.Executors;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public final class Main {
     private static final int MAX_PARALLEL_LOGINS = 6;
 
@@ -36,6 +38,7 @@ public final class Main {
                 logins = logins.stream().limit(options.limit()).toList();
             }
             if (options.dryRun()) {
+                log.info("Dry run: {} login(s) would be resolved.", logins.size());
                 System.out.printf("Dry run: %d login(s) would be resolved.%n", logins.size());
                 return;
             }
@@ -73,11 +76,13 @@ public final class Main {
                 throw new IllegalStateException("A login worker failed unexpectedly", e.getCause());
                 }
                 System.out.printf("Finished: %d processed, %d failure(s).%n", logins.size(), failures);
+                log.info("Credential run finished: {} processed, {} failure(s).", logins.size(), failures);
             }
             if (failures > 0) {
                 System.exit(1);
             }
         } catch (RuntimeException e) {
+            log.error("Credential run stopped ({}).", e.getClass().getSimpleName());
             System.err.println("Error: " + e.getMessage());
             System.err.println("Use --help for usage.");
             System.exit(2);

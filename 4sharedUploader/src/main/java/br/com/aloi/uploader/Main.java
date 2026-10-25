@@ -6,7 +6,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public final class Main {
     private Main() {
     }
@@ -15,15 +17,18 @@ public final class Main {
         try {
             run(args);
         } catch (IllegalArgumentException e) {
+            log.warn("Uploader received invalid command-line arguments.");
             System.err.println("Error: " + e.getMessage());
             System.err.println();
             printUsage();
             System.exit(2);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            log.info("Upload was interrupted.");
             System.err.println("Upload interrupted.");
             System.exit(130);
         } catch (Exception e) {
+            log.error("Uploader failed ({}).", e.getClass().getSimpleName());
             System.err.println("Upload failed: " + e.getMessage());
             System.exit(1);
         }
@@ -91,28 +96,35 @@ public final class Main {
                 result = uploader.upload(file, name);
             } catch (IOException e) {
                 failed++;
+                log.warn("Upload failed; local file was retained ({}).", e.getClass().getSimpleName());
                 System.err.printf("Failed %s: %s%n", file, e.getMessage());
                 continue;
             }
 
             uploaded++;
+            log.info("Upload succeeded ({} bytes).", size);
             System.out.printf("Uploaded %s -> %s (%d bytes)%n", file, name, size);
             System.out.println(result.responseBody());
             if (moveDestination != null) {
                 try {
                     Path destination = moveUploadedFile(input, file, moveDestination);
                     if (destination == null) {
+                        log.info("Uploaded file was already in the backup directory.");
                         System.out.printf("Already in backup directory: %s%n", file);
                     } else {
+                        log.info("Uploaded file was moved to the backup directory.");
                         System.out.printf("Moved %s -> %s%n", file, destination);
                     }
                 } catch (IOException e) {
                     moveFailed++;
+                    log.warn("Upload succeeded but backup move failed ({}).", e.getClass().getSimpleName());
                     System.err.printf("Uploaded %s, but could not move it to backup: %s%n", file, e.getMessage());
                 }
             }
         }
         System.out.printf("Finished: %d uploaded, %d failed, %d backup move failures.%n",
+                uploaded, failed, moveFailed);
+        log.info("Uploader finished: {} uploaded, {} failed, {} backup move failures.",
                 uploaded, failed, moveFailed);
         if (failed > 0 || moveFailed > 0) {
             System.exit(1);

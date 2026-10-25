@@ -5,7 +5,9 @@ import br.com.aloi.domain.LoginEntry4to4;
 import br.com.aloi.domain.LoginType;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public final class Main {
     private Main() {
     }
@@ -26,10 +28,12 @@ public final class Main {
             try (MongoClient client = MongoClients.create(settings.mongoUri())) {
                 AccountCredentials credentials = new CredentialProvider(settings, client)
                         .resolve(new LoginEntry4to4(args[0], LoginType.CURRENT));
+                log.info("Credential resolution completed successfully.");
                 System.out.printf("OAuth credentials are available for %s; secret values are redacted.%n",
                         credentials.login());
             }
         } catch (RuntimeException e) {
+            log.error("Credential resolution failed ({}).", e.getClass().getSimpleName());
             System.err.println("Could not resolve OAuth credentials: " + e.getMessage());
             System.exit(1);
         }
