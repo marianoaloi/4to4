@@ -1,4 +1,4 @@
-package br.com.aloi.tokenprovider;
+package br.com.aloi.domain;
 
 /** OAuth credentials for one account. Secret values are intentionally redacted from toString(). */
 public record AccountCredentials(

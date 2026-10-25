@@ -1,5 +1,8 @@
 	package br.com.aloi.tokenprovider;
 
+import br.com.aloi.domain.AccountCredentials;
+import br.com.aloi.domain.LoginEntry4to4;
+import br.com.aloi.domain.LoginType;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 
@@ -21,7 +24,8 @@ public final class Main {
         try {
             ProviderSettings settings = ProviderSettings.fromEnvironment();
             try (MongoClient client = MongoClients.create(settings.mongoUri())) {
-                AccountCredentials credentials = new CredentialProvider(settings, client).resolve(args[0]);
+                AccountCredentials credentials = new CredentialProvider(settings, client)
+                        .resolve(new LoginEntry4to4(args[0], LoginType.CURRENT));
                 System.out.printf("OAuth credentials are available for %s; secret values are redacted.%n",
                         credentials.login());
             }

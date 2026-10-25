@@ -1,5 +1,6 @@
 package br.com.aloi.tokenprovider;
 
+import br.com.aloi.domain.AccountCredentials;
 import org.bson.Document;
 import org.junit.jupiter.api.Test;
 

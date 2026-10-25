@@ -3,6 +3,8 @@ package br.com.aloi.callaccesstoken;
 import org.bson.Document;
 import org.junit.jupiter.api.Test;
 
+import br.com.aloi.domain.LoginEntry4to4;
+
 import java.nio.file.Path;
 import java.util.List;
 
@@ -17,9 +19,9 @@ class NodeLoginRunnerTest {
                  "old":["blocked@example.test","old@example.test"],
                  "download":["download@example.test"]}
                 """);
-        List<String> logins = LoginCatalog.activeLogins(catalog);
+        List<LoginEntry4to4> logins = LoginCatalog.activeLogins(catalog);
         assertFalse(logins.isEmpty());
-        assertEquals(List.of("active@example.test", "old@example.test", "download@example.test"), logins);
+        assertEquals(List.of("active@example.test", "old@example.test", "download@example.test"), logins.stream().map(LoginEntry4to4::login).toList());
     }
 
     @Test

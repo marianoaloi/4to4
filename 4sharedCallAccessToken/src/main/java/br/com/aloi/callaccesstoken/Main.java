@@ -1,11 +1,14 @@
 package br.com.aloi.callaccesstoken;
 
-import br.com.aloi.tokenprovider.AccountCredentials;
+import br.com.aloi.domain.AccountCredentials;
+import br.com.aloi.domain.LoginEntry4to4;
+import br.com.aloi.domain.LoginType;
 import br.com.aloi.tokenprovider.CredentialProvider;
 import br.com.aloi.tokenprovider.ProviderSettings;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorCompletionService;
@@ -24,9 +27,11 @@ public final class Main {
                 return;
             }
 
-            List<String> logins = options.login() == null
+            List<LoginEntry4to4> logins = options.login() == null
                     ? LoginCatalog.allActiveLogins()
-                    : List.of(options.login());
+                    : Arrays.asList(options.login()).stream()
+                        .map(login -> new LoginEntry4to4(login, LoginType.CURRENT))
+                        .toList();
             if (options.limit() > 0) {
                 logins = logins.stream().limit(options.limit()).toList();
             }
@@ -41,7 +46,7 @@ public final class Main {
                 CredentialProvider credentialProvider = new CredentialProvider(settings, client);
                 try (var executor = Executors.newFixedThreadPool(Math.min(MAX_PARALLEL_LOGINS, logins.size()))) {
             var completions = new ExecutorCompletionService<LoginResult>(executor);
-                for (String login : logins) {
+                for (LoginEntry4to4 login : logins) {
                     completions.submit(() -> {
                         try {
                             return new LoginResult(login, credentialProvider.resolve(login), null);
@@ -58,7 +63,7 @@ public final class Main {
                     } else {
                         failures++;
                         System.err.printf("Could not resolve credentials for %s: %s%n",
-                                result.login(), result.error().getMessage());
+                                result.login().login(), result.error().getMessage());
                     }
                 }
             } catch (InterruptedException e) {
@@ -79,7 +84,7 @@ public final class Main {
         }
     }
 
-    private record LoginResult(String login, AccountCredentials credentials, RuntimeException error) { }
+    private record LoginResult(LoginEntry4to4 login, AccountCredentials credentials, RuntimeException error) { }
 
     private static void printUsage() {
         System.out.println("4sharedCallAccessToken");
@@ -113,10 +118,12 @@ public final class Main {
                     default -> throw new IllegalArgumentException("Unknown option: " + args[i]);
                 }
             }
-            if (login != null && !LoginCatalog.allActiveLogins().contains(login)) {
+                String selectedLogin = login;
+                if (selectedLogin != null && LoginCatalog.allActiveLogins().stream()
+                    .noneMatch(entry -> entry.login().equals(selectedLogin))) {
                 throw new IllegalArgumentException("--login must match an active login in the copied catalog");
             }
-            return new Options(help, dryRun, limit, login);
+                return new Options(help, dryRun, limit, selectedLogin);
         }
     }
 }

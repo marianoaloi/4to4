@@ -1,6 +1,8 @@
 package br.com.aloi.uploader;
 
-import br.com.aloi.tokenprovider.AccountCredentials;
+import br.com.aloi.domain.AccountCredentials;
+import br.com.aloi.domain.LoginEntry4to4;
+import br.com.aloi.domain.LoginType;
 import br.com.aloi.tokenprovider.CredentialProvider;
 import br.com.aloi.tokenprovider.ProviderSettings;
 import com.mongodb.client.MongoClient;
@@ -26,7 +28,8 @@ record Config(String consumerKey, String consumerSecret, String accessToken,
             ProviderSettings settings = ProviderSettings.fromEnvironment();
             AccountCredentials credentials;
             try (MongoClient client = MongoClients.create(settings.mongoUri())) {
-                credentials = new CredentialProvider(settings, client).resolve(login);
+                credentials = new CredentialProvider(settings, client)
+                        .resolve(new LoginEntry4to4(login, LoginType.CURRENT));
             }
             String rootFolderId = value("FOURSHARED_ROOT_FOLDER_ID", credentials.rootFolderId());
             if (rootFolderId == null || rootFolderId.isBlank()) {

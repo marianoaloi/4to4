@@ -16,6 +16,11 @@
     <dependencies>
         <dependency>
             <groupId>br.com.aloi</groupId>
+            <artifactId>domain</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>br.com.aloi</groupId>
             <artifactId>4shared-token-provider</artifactId>
             <version>${project.version}</version>
         </dependency>

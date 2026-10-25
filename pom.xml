@@ -12,6 +12,7 @@
     <description>Independent 4shared token provider and uploader.</description>
 
     <modules>
+        <module>domain</module>
         <module>4sharedTokenProvider</module>
         <module>4sharedUploader</module>
         <module>4sharedCallAccessToken</module>

@@ -1,5 +1,7 @@
 package br.com.aloi.tokenprovider;
 
+import br.com.aloi.domain.AccountCredentials;
+import br.com.aloi.domain.LoginEntry4to4;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import org.bson.Document;
@@ -9,7 +11,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
-import java.util.Map;
 
 import static com.mongodb.client.model.Filters.eq;
 
@@ -29,11 +30,11 @@ public final class CredentialProvider {
         this.clock = clock;
     }
 
-    public AccountCredentials resolve(String login) {
-        if (login == null || login.isBlank()) {
+    public AccountCredentials resolve(LoginEntry4to4 login) {
+        if (login == null || login.login() == null || login.login().isBlank()) {
             throw new IllegalArgumentException("A 4shared login is required");
         }
-        String normalizedLogin = login.trim();
+        String normalizedLogin = login.login().trim();
         MongoCollection<Document> accounts = client.getDatabase(settings.database())
                 .getCollection(settings.accountCollection());
         Document account = accounts.find(eq("_id", normalizedLogin)).first();

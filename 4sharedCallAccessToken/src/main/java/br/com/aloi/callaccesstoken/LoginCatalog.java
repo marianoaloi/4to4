@@ -1,33 +1,41 @@
 package br.com.aloi.callaccesstoken;
 
+import br.com.aloi.domain.LoginEntry4to4;
+import br.com.aloi.domain.LoginType;
 import org.bson.Document;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 
 /** Loads the private login catalog from a local JSON file. */
 public final class LoginCatalog {
+
     private static final Path CATALOG_PATH = Path.of("4sharedCallAccessToken", "logins.json");
 
     private LoginCatalog() { }
 
-    public static List<String> allActiveLogins() {
+    public static List<LoginEntry4to4> allActiveLogins() {
         return activeLogins(readCatalog());
     }
 
-    static List<String> activeLogins(Document catalog) {
-        List<String> banned = readLogins(catalog, "banned");
-        var unique = new LinkedHashSet<String>();
-        unique.addAll(readLogins(catalog, "current"));
-        unique.addAll(readLogins(catalog, "old"));
-        unique.addAll(readLogins(catalog, "download"));
-        unique.removeAll(Set.copyOf(banned));
-        return List.copyOf(unique);
+    static List<LoginEntry4to4> activeLogins(Document catalog) {
+        Set<String> bannedLogins = readLogins(catalog, LoginType.BANNED.key()).stream()
+                .map(LoginEntry4to4::login)
+                .collect(java.util.stream.Collectors.toSet());
+        var unique = new LinkedHashMap<String, LoginEntry4to4>();
+        for (LoginType type : List.of(LoginType.CURRENT, LoginType.OLD, LoginType.DOWNLOAD)) {
+            for (LoginEntry4to4 entry : readLogins(catalog, type.key())) {
+                if (!bannedLogins.contains(entry.login())) {
+                    unique.putIfAbsent(entry.login(), entry);
+                }
+            }
+        }
+        return List.copyOf(unique.values());
     }
 
     private static Document readCatalog() {
@@ -42,17 +50,17 @@ public final class LoginCatalog {
         }
     }
 
-    private static List<String> readLogins(Document catalog, String key) {
+    private static List<LoginEntry4to4> readLogins(Document catalog, String key) {
         Object value = catalog.get(key);
         if (!(value instanceof List<?> entries)) {
             throw new IllegalStateException("Login catalog field '" + key + "' must be a JSON array of email strings.");
         }
-        List<String> logins = new ArrayList<>(entries.size());
+        List<LoginEntry4to4> logins = new ArrayList<>(entries.size());
         for (Object entry : entries) {
             if (!(entry instanceof String login) || login.isBlank()) {
                 throw new IllegalStateException("Login catalog field '" + key + "' must contain only non-empty strings.");
             }
-            logins.add(login);
+            logins.add(new LoginEntry4to4(login, LoginType.valueOf(key.toUpperCase())));
         }
         return List.copyOf(logins);
     }
