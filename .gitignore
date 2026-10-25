@@ -20,3 +20,4 @@ AGENTS.md
 4sharedCallAccessToken/logins.json
 .vscode/launch.json
 .swarm/**
+logs/**.log

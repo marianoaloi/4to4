@@ -92,7 +92,13 @@ public final class CredentialProvider {
         MongoCollection<Document> accounts = client.getDatabase(settings.database())
                 .getCollection(settings.accountCollection());
         List<AccountCandidate> candidates = new ArrayList<>();
-        for (Document account : accounts.find()) {
+        //{ "accessor.freeSize": { $gt: 4059430912 } }
+        for (
+            Document account : accounts.find(
+                Document.parse("{ \"accessor.freeSize\": { \"$gt\": " + (uploadSizeBytes + (5 * 1024)) + " } }")
+            ).projection(Document.parse("{\"accessor.freeSize\": 1, \"_id\": 0}"))
+        ) 
+        {
             Object id = account.get("_id");
             Document accessor = account.get("accessor", Document.class);
             Long freeSize = accessor == null ? null : sizeInBytes(accessor.get("freeSize"));

@@ -102,9 +102,9 @@ public final class Main {
             }
 
             uploaded++;
-            log.info("Upload succeeded ({} bytes).", size);
+            log.info("Upload {} succeeded with name {} ({} bytes).", file, name, size);
             System.out.printf("Uploaded %s -> %s (%d bytes)%n", file, name, size);
-            System.out.println(result.responseBody());
+            log.info(result.responseBody());
             if (moveDestination != null) {
                 try {
                     Path destination = moveUploadedFile(input, file, moveDestination);
