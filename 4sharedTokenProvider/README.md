@@ -21,7 +21,7 @@ Optional:
 | Variable | Default |
 |---|---|
 | `FOURSHARED_DATABASE` | `4shared` |
-| `FOURSHARED_ACCOUNTS_COLLECTION` | `accounts` |
+| `FOURSHARED_ACCOUNTS_COLLECTION` | `account` |
 | `FOURSHARED_TOKEN_MAX_AGE_MINUTES` | `50` |
 | `FOURSHARED_AUTH_TIMEOUT_MINUTES` | `5` |
 | `FOURSHARED_REQUEST_TOKEN_URL` | `https://api.4shared.com/v1_2/oauth/initiate` |

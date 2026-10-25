@@ -1,12 +1,6 @@
 package br.com.aloi.uploader;
 
 import br.com.aloi.domain.AccountCredentials;
-import br.com.aloi.domain.LoginEntry4to4;
-import br.com.aloi.domain.LoginType;
-import br.com.aloi.tokenprovider.CredentialProvider;
-import br.com.aloi.tokenprovider.ProviderSettings;
-import com.mongodb.client.MongoClient;
-import com.mongodb.client.MongoClients;
 
 import java.net.URI;
 import java.time.Duration;
@@ -23,26 +17,6 @@ record Config(String consumerKey, String consumerSecret, String accessToken,
     }
 
     static Config fromEnvironment() {
-        String login = System.getenv("FOURSHARED_LOGIN");
-        if (login != null && !login.isBlank()) {
-            ProviderSettings settings = ProviderSettings.fromEnvironment();
-            AccountCredentials credentials;
-            try (MongoClient client = MongoClients.create(settings.mongoUri())) {
-                credentials = new CredentialProvider(settings, client)
-                        .resolve(new LoginEntry4to4(login, LoginType.CURRENT));
-            }
-            String rootFolderId = value("FOURSHARED_ROOT_FOLDER_ID", credentials.rootFolderId());
-            if (rootFolderId == null || rootFolderId.isBlank()) {
-                throw new IllegalArgumentException("Could not determine the 4shared root folder ID");
-            }
-            URI uploadUri = URI.create(value("FOURSHARED_UPLOAD_URL", "https://upload.4shared.com/v1_2/files"));
-            long timeoutSeconds = timeoutSeconds();
-            requireHttps(uploadUri, "FOURSHARED_UPLOAD_URL");
-            return new Config(credentials.consumerKey(), credentials.consumerSecret(),
-                    credentials.accessToken(), credentials.accessTokenSecret(), rootFolderId,
-                    uploadUri, Duration.ofSeconds(timeoutSeconds));
-        }
-
         String consumerKey = required("FOURSHARED_CONSUMER_KEY");
         String consumerSecret = required("FOURSHARED_CONSUMER_SECRET");
         String accessToken = required("FOURSHARED_ACCESS_TOKEN");
@@ -53,6 +27,19 @@ record Config(String consumerKey, String consumerSecret, String accessToken,
         requireHttps(uploadUri, "FOURSHARED_UPLOAD_URL");
         return new Config(consumerKey, consumerSecret, accessToken, accessTokenSecret,
                 rootFolderId, uploadUri, Duration.ofSeconds(timeoutSeconds));
+    }
+
+    static Config forCredentials(AccountCredentials credentials) {
+        String rootFolderId = value("FOURSHARED_ROOT_FOLDER_ID", credentials.rootFolderId());
+        if (rootFolderId == null || rootFolderId.isBlank()) {
+            throw new IllegalArgumentException("Could not determine the 4shared root folder ID for "
+                    + credentials.login());
+        }
+        URI uploadUri = URI.create(value("FOURSHARED_UPLOAD_URL", "https://upload.4shared.com/v1_2/files"));
+        requireHttps(uploadUri, "FOURSHARED_UPLOAD_URL");
+        return new Config(credentials.consumerKey(), credentials.consumerSecret(), credentials.accessToken(),
+                credentials.accessTokenSecret(), rootFolderId, uploadUri,
+                Duration.ofSeconds(timeoutSeconds()));
     }
 
     private static long timeoutSeconds() {

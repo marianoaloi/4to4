@@ -16,7 +16,7 @@
     <dependencies>
         <dependency>
             <groupId>br.com.aloi</groupId>
-            <artifactId>domain</artifactId>
+            <artifactId>4shared-domain</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
