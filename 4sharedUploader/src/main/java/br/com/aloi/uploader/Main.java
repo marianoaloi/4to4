@@ -36,6 +36,7 @@ public final class Main {
         }
 
         String remoteName = null;
+        String moveTo = System.getenv("FOURSHARED_POST_UPLOAD_DIRECTORY");
         Path input = null;
         for (int i = 0; i < args.length; i++) {
             if ("--name".equals(args[i])) {
@@ -43,6 +44,11 @@ public final class Main {
                     throw new IllegalArgumentException("--name requires a non-empty remote filename");
                 }
                 remoteName = args[i];
+            } else if ("--move-to".equals(args[i])) {
+                if (++i >= args.length || args[i].isBlank()) {
+                    throw new IllegalArgumentException("--move-to requires a destination directory");
+                }
+                moveTo = args[i];
             } else if (args[i].startsWith("-")) {
                 throw new IllegalArgumentException("Unknown option: " + args[i]);
             } else if (input == null) {
@@ -63,6 +69,8 @@ public final class Main {
         if (remoteName != null && Files.isDirectory(input)) {
             throw new IllegalArgumentException("--name can only be used with a single file");
         }
+        Path moveDestination = moveTo == null || moveTo.isBlank()
+                ? null : Path.of(moveTo).toAbsolutePath().normalize();
 
         Config config = Config.fromEnvironment();
         FourSharedUploader uploader = new FourSharedUploader(config);
@@ -71,22 +79,58 @@ public final class Main {
             throw new IllegalArgumentException("No regular files found under: " + input);
         }
 
+        int uploaded = 0;
         int failed = 0;
+        int moveFailed = 0;
         for (Path file : files) {
             String name = remoteName == null ? FourSharedUploader.generateRemoteName(file) : remoteName;
+            FourSharedUploader.UploadResult result;
+            long size;
             try {
-                FourSharedUploader.UploadResult result = uploader.upload(file, name);
-                System.out.printf("Uploaded %s -> %s (%d bytes)%n", file, name, Files.size(file));
-                System.out.println(result.responseBody());
+                size = Files.size(file);
+                result = uploader.upload(file, name);
             } catch (IOException e) {
                 failed++;
                 System.err.printf("Failed %s: %s%n", file, e.getMessage());
+                continue;
+            }
+
+            uploaded++;
+            System.out.printf("Uploaded %s -> %s (%d bytes)%n", file, name, size);
+            System.out.println(result.responseBody());
+            if (moveDestination != null) {
+                try {
+                    Path destination = moveUploadedFile(input, file, moveDestination);
+                    if (destination == null) {
+                        System.out.printf("Already in backup directory: %s%n", file);
+                    } else {
+                        System.out.printf("Moved %s -> %s%n", file, destination);
+                    }
+                } catch (IOException e) {
+                    moveFailed++;
+                    System.err.printf("Uploaded %s, but could not move it to backup: %s%n", file, e.getMessage());
+                }
             }
         }
-        System.out.printf("Finished: %d uploaded, %d failed.%n", files.size() - failed, failed);
-        if (failed > 0) {
+        System.out.printf("Finished: %d uploaded, %d failed, %d backup move failures.%n",
+                uploaded, failed, moveFailed);
+        if (failed > 0 || moveFailed > 0) {
             System.exit(1);
         }
+    }
+
+    private static Path moveUploadedFile(Path input, Path file, Path backupDirectory) throws IOException {
+        Path relativePath = Files.isDirectory(input) ? input.relativize(file) : file.getFileName();
+        Path destination = backupDirectory.resolve(relativePath).normalize();
+        if (!destination.startsWith(backupDirectory)) {
+            throw new IOException("Destination escapes the configured backup directory");
+        }
+        if (destination.equals(file)) {
+            return null;
+        }
+        Files.createDirectories(destination.getParent());
+        Files.move(file, destination);
+        return destination;
     }
 
     private static List<Path> collectFiles(Path input) throws IOException {
@@ -104,10 +148,12 @@ public final class Main {
 
     private static void printUsage() {
         System.out.println("4shared Uploader");
-        System.out.println("Usage: java -jar 4shared-uploader-1.0.0-jar-with-dependencies.jar [--name REMOTE_NAME] <file-or-directory>");
+        System.out.println("Usage: java -jar 4shared-uploader-1.0.0-jar-with-dependencies.jar [--name REMOTE_NAME] [--move-to DIRECTORY] <file-or-directory>");
         System.out.println();
         System.out.println("A directory uploads all readable regular files recursively, one at a time.");
-        System.out.println("Local files are kept. Remote names are randomized unless --name is provided.");
+        System.out.println("Local files are kept unless --move-to or FOURSHARED_POST_UPLOAD_DIRECTORY is configured.");
+        System.out.println("Configured files move only after a successful upload; directory structure is preserved.");
+        System.out.println("Remote names are randomized unless --name is provided.");
         System.out.println("Credentials: set FOURSHARED_LOGIN to read a token from the configured MongoDB account,");
         System.out.println("or provide all five direct credential variables:");
         System.out.println("  FOURSHARED_CONSUMER_KEY, FOURSHARED_CONSUMER_SECRET");
@@ -116,5 +162,6 @@ public final class Main {
         System.out.println("Optional environment variables:");
         System.out.println("  FOURSHARED_UPLOAD_URL (default: https://upload.4shared.com/v1_2/files)");
         System.out.println("  FOURSHARED_TIMEOUT_SECONDS (default: 120)");
+        System.out.println("  FOURSHARED_POST_UPLOAD_DIRECTORY (optional backup directory; --move-to overrides it)");
     }
 }

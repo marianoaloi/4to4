@@ -42,6 +42,7 @@ public final class MainSimple {
         }
 
         String remoteName = null;
+        String moveTo = System.getenv("FOURSHARED_POST_UPLOAD_DIRECTORY");
         Path input = null;
         for (int i = 0; i < args.length; i++) {
             if ("--name".equals(args[i])) {
@@ -49,6 +50,11 @@ public final class MainSimple {
                     throw new IllegalArgumentException("--name requires a non-empty remote filename");
                 }
                 remoteName = args[i];
+            } else if ("--move-to".equals(args[i])) {
+                if (++i >= args.length || args[i].isBlank()) {
+                    throw new IllegalArgumentException("--move-to requires a destination directory");
+                }
+                moveTo = args[i];
             } else if (args[i].startsWith("-")) {
                 throw new IllegalArgumentException("Unknown option: " + args[i]);
             } else if (input == null) {
@@ -70,6 +76,8 @@ public final class MainSimple {
             throw new IllegalArgumentException("--name can only be used with a single file");
         }
 
+        Config config = Config.fromEnvironment();
+        FourSharedUploader uploader = new FourSharedUploader(config);
         List<Path> files = collectFiles(input);
         if (files.isEmpty()) {
             throw new IllegalArgumentException("No regular files found under: " + input);
@@ -77,51 +85,78 @@ public final class MainSimple {
 
         String mongoUri = System.getenv("FOURSHARED_MONGODB_URI");
         if (mongoUri != null && !mongoUri.isBlank()) {
-            uploadFromAccounts(files, remoteName);
+            uploadFromAccounts(files,input, moveTo, remoteName);
         } else {
-            uploadWithDirectCredentials(files, remoteName, Config.fromEnvironment());
+            uploadWithDirectCredentials(files,input, moveTo, remoteName, Config.fromEnvironment());
         }
     }
 
-    private static void uploadFromAccounts(List<Path> files, String remoteName) throws Exception {
+    private static void uploadFromAccounts(List<Path> files, Path input, String moveTo, String remoteName) throws Exception {
         ProviderSettings settings = ProviderSettings.fromEnvironment();
         try (MongoClient client = MongoClients.create(settings.mongoUri())) {
             CredentialProvider credentials = new CredentialProvider(settings, client);
-            uploadFiles(files, remoteName, file -> {
+            uploadFiles(files, moveTo,input, remoteName, file -> {
                 AccountCredentials account = credentials.resolveBestFit(Files.size(file));
                 return new SelectedUpload(Config.forCredentials(account), account.login());
             });
         }
     }
 
-    private static void uploadWithDirectCredentials(List<Path> files, String remoteName, Config config) throws Exception {
-        uploadFiles(files, remoteName, file -> new SelectedUpload(config, "direct credentials"));
+    private static void uploadWithDirectCredentials(List<Path> files, Path input, String moveTo, String remoteName, Config config) throws Exception {
+        uploadFiles(files, moveTo, input, remoteName, file -> new SelectedUpload(config, "direct credentials"));
     }
 
-    private static void uploadFiles(List<Path> files, String remoteName, UploadConfigProvider configProvider)
+    private static void uploadFiles(List<Path> files, String moveTo, Path input, String remoteName, UploadConfigProvider configProvider)
             throws Exception {
+        Path moveDestination = moveTo == null || moveTo.isBlank()
+                ? null : Path.of(moveTo).toAbsolutePath().normalize();
+        int uploaded = 0;
         int failed = 0;
+        int moveFailed = 0;
         for (Path file : files) {
             String name = remoteName == null ? FourSharedUploader.generateRemoteName(file) : remoteName;
+            FourSharedUploader.UploadResult result;
+            long size;
             try {
+                size = Files.size(file);
                 SelectedUpload selected = configProvider.forFile(file);
-                FourSharedUploader.UploadResult result = new FourSharedUploader(selected.config()).upload(file, name);
+                result = new FourSharedUploader(selected.config()).upload(file, name);
                 System.out.printf("Uploaded %s -> %s using %s (%d bytes)%n",
                         file, name, selected.accountLogin(), Files.size(file));
                 System.out.println(result.responseBody());
             } catch (IOException e) {
                 failed++;
                 System.err.printf("Failed %s: %s%n", file, e.getMessage());
+                continue;
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw e;
             } catch (Exception e) {
                 failed++;
                 System.err.printf("Failed %s: %s%n", file, e.getMessage());
+                continue;
+            }
+
+            uploaded++;
+            System.out.printf("Uploaded %s -> %s (%d bytes)%n", file, name, size);
+            System.out.println(result.responseBody());
+            if (moveDestination != null) {
+                try {
+                    Path destination = moveUploadedFile(input, file, moveDestination);
+                    if (destination == null) {
+                        System.out.printf("Already in backup directory: %s%n", file);
+                    } else {
+                        System.out.printf("Moved %s -> %s%n", file, destination);
+                    }
+                } catch (IOException e) {
+                    moveFailed++;
+                    System.err.printf("Uploaded %s, but could not move it to backup: %s%n", file, e.getMessage());
+                }
             }
         }
-        System.out.printf("Finished: %d uploaded, %d failed.%n", files.size() - failed, failed);
-        if (failed > 0) {
+        System.out.printf("Finished: %d uploaded, %d failed, %d backup move failures.%n",
+                uploaded, failed, moveFailed);
+        if (failed > 0 || moveFailed > 0) {
             System.exit(1);
         }
     }
@@ -132,6 +167,20 @@ public final class MainSimple {
     }
 
     private record SelectedUpload(Config config, String accountLogin) { }
+    
+    private static Path moveUploadedFile(Path input, Path file, Path backupDirectory) throws IOException {
+        Path relativePath = Files.isDirectory(input) ? input.relativize(file) : file.getFileName();
+        Path destination = backupDirectory.resolve(relativePath).normalize();
+        if (!destination.startsWith(backupDirectory)) {
+            throw new IOException("Destination escapes the configured backup directory");
+        }
+        if (destination.equals(file)) {
+            return null;
+        }
+        Files.createDirectories(destination.getParent());
+        Files.move(file, destination);
+        return destination;
+    }
 
     private static List<Path> collectFiles(Path input) throws IOException {
         if (Files.isRegularFile(input)) {
@@ -148,16 +197,20 @@ public final class MainSimple {
 
     private static void printUsage() {
         System.out.println("4shared Uploader");
-        System.out.println("Usage: java -jar 4shared-uploader-1.0.0-jar-with-dependencies.jar [--name REMOTE_NAME] <file-or-directory>");
+        System.out.println("Usage: java -cp 4shared-uploader-1.0.0-jar-with-dependencies.jar br.com.aloi.uploader.MainSimple [--name REMOTE_NAME] [--move-to DIRECTORY] <file-or-directory>");
         System.out.println();
         System.out.println("A directory uploads all readable regular files recursively, one at a time.");
-        System.out.println("Local files are kept. Remote names are randomized unless --name is provided.");
-        System.out.println("Set FOURSHARED_MONGODB_URI and the consumer key/secret to route each file to the account");
-        System.out.println("with the least free space that can fit it, or provide all five direct credential variables:");
+        System.out.println("Local files are kept unless --move-to or FOURSHARED_POST_UPLOAD_DIRECTORY is configured.");
+        System.out.println("Configured files move only after a successful upload; directory structure is preserved.");
+        System.out.println("Remote names are randomized unless --name is provided.");
+        System.out.println("Credentials: set FOURSHARED_LOGIN to read a token from the configured MongoDB account,");
+        System.out.println("or provide all five direct credential variables:");
         System.out.println("  FOURSHARED_CONSUMER_KEY, FOURSHARED_CONSUMER_SECRET");
         System.out.println("  FOURSHARED_ACCESS_TOKEN, FOURSHARED_ACCESS_TOKEN_SECRET, FOURSHARED_ROOT_FOLDER_ID");
+        System.out.println("Mongo mode also requires FOURSHARED_MONGODB_URI and the consumer key/secret.");
         System.out.println("Optional environment variables:");
         System.out.println("  FOURSHARED_UPLOAD_URL (default: https://upload.4shared.com/v1_2/files)");
         System.out.println("  FOURSHARED_TIMEOUT_SECONDS (default: 120)");
+        System.out.println("  FOURSHARED_POST_UPLOAD_DIRECTORY (optional backup directory; --move-to overrides it)");
     }
 }
