@@ -17,11 +17,15 @@ import java.util.Date;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 
+import static com.mongodb.client.model.Filters.and;
 import static com.mongodb.client.model.Filters.eq;
+import static com.mongodb.client.model.Updates.set;
 
 /** Reads existing account accessor fields without depending on the legacy Java application. */
 @Slf4j
 public final class CredentialProvider {
+    private static final int FREE_SPACE_UPDATE_ATTEMPTS = 5;
+
     private final ProviderSettings settings;
     private final MongoClient client;
     private final Clock clock;
@@ -77,10 +81,9 @@ public final class CredentialProvider {
                 rootFolderId = previousUser.getString("rootFolderId");
             }
         }
-        // return new AccountCredentials(normalizedLogin, settings.consumerKey(), settings.consumerSecret(),
-        //         tokens.accessToken(), tokens.accessTokenSecret(), rootFolderId,
-        //         sizeInBytes(user.get("freeSpace")));
-        return new AccountCredentials(authorizedLogin, rootFolderId, rootFolderId, normalizedLogin, authorizedLogin, rootFolderId);
+        return new AccountCredentials(normalizedLogin, settings.consumerKey(), settings.consumerSecret(),
+                tokens.accessToken(), tokens.accessTokenSecret(), rootFolderId,
+                sizeInBytes(user.get("freeSpace")));
     }
 
     /** Refreshes stale accessors, then chooses the fitting account with the least free space. */
@@ -91,19 +94,13 @@ public final class CredentialProvider {
 
         MongoCollection<Document> accounts = client.getDatabase(settings.database())
                 .getCollection(settings.accountCollection());
-        List<AccountCandidate> candidates = new ArrayList<>();
-        //{ "accessor.freeSize": { $gt: 4059430912 } }
-        for (
-            Document account : accounts.find(
-                Document.parse("{ \"accessor.freeSize\": { \"$gt\": " + (uploadSizeBytes + (5 * 1024)) + " } }")
-            ).projection(Document.parse("{\"accessor.freeSize\": 1, \"_id\": 0}"))
-        ) 
-        {
+        List<String> candidates = new ArrayList<>();
+        for (Document account : accounts.find()) {
             Object id = account.get("_id");
             Document accessor = account.get("accessor", Document.class);
             Long freeSize = accessor == null ? null : sizeInBytes(accessor.get("freeSize"));
             if (id instanceof String login && !login.isBlank() && freeSize != null) {
-                candidates.add(new AccountCandidate(login, freeSize));
+                candidates.add(login);
             }
         }
 
@@ -111,24 +108,96 @@ public final class CredentialProvider {
         // is renewed and its updated freeSize is used in the plan.
         List<AccountCredentials> refreshed = new ArrayList<>();
         List<String> failures = new ArrayList<>();
-        for (AccountCandidate candidate : candidates) {
+        for (String candidate : candidates) {
             try {
-                AccountCredentials credentials = resolve(new LoginEntry4to4(candidate.login(), LoginType.CURRENT));
+                AccountCredentials credentials = resolve(new LoginEntry4to4(candidate, LoginType.CURRENT));
                 if (credentials.freeSizeBytes() != null) {
                     refreshed.add(credentials);
                 }
             } catch (RuntimeException error) {
-                failures.add(candidate.login());
+                failures.add(candidate);
             }
         }
 
-        return refreshed.stream()
+        List<AccountCredentials> fitting = refreshed.stream()
                 .filter(credentials -> credentials.freeSizeBytes() >= uploadSizeBytes)
-                .min(Comparator.comparingLong(AccountCredentials::freeSizeBytes))
-                .orElseThrow(() -> new CredentialException(failures.isEmpty()
-                        ? "No account has enough free space for this file"
-                        : "No account has enough available space; credential refresh failed for "
-                                + String.join(", ", failures)));
+                .sorted(Comparator.comparingLong(AccountCredentials::freeSizeBytes))
+                .toList();
+        for (AccountCredentials candidate : fitting) {
+            AccountCredentials reserved = reserveFreeSpace(accounts, candidate, uploadSizeBytes);
+            if (reserved != null) {
+                return reserved;
+            }
+        }
+
+        throw new CredentialException(failures.isEmpty()
+                ? "No account has enough free space for this file"
+                : "No account has enough available space; credential refresh failed for "
+                        + String.join(", ", failures));
+    }
+
+    /** Restores a free-space reservation when the corresponding upload did not complete. */
+    public void restoreReservedSpace(String login, long uploadSizeBytes) {
+        if (blank(login)) {
+            throw new IllegalArgumentException("A 4shared login is required to restore reserved space");
+        }
+        if (uploadSizeBytes <= 0) {
+            throw new IllegalArgumentException("Restored upload size must be greater than zero");
+        }
+
+        MongoCollection<Document> accounts = client.getDatabase(settings.database())
+                .getCollection(settings.accountCollection());
+        String normalizedLogin = login.trim();
+        for (int attempt = 0; attempt < FREE_SPACE_UPDATE_ATTEMPTS; attempt++) {
+            Document account = accounts.find(eq("_id", normalizedLogin)).first();
+            Document accessor = account == null ? null : account.get("accessor", Document.class);
+            Object currentValue = accessor == null ? null : accessor.get("freeSize");
+            Long currentSize = sizeInBytes(currentValue);
+            if (currentSize == null) {
+                throw new CredentialException("Could not restore reserved space because the account free-size value is unavailable");
+            }
+
+            final long restoredSize;
+            try {
+                restoredSize = Math.addExact(currentSize, uploadSizeBytes);
+            } catch (ArithmeticException e) {
+                throw new CredentialException("Could not restore reserved space because the account free-size value overflowed", e);
+            }
+
+            var result = accounts.updateOne(
+                    and(eq("_id", normalizedLogin), eq("accessor.freeSize", currentValue)),
+                    set("accessor.freeSize", restoredSize));
+            if (result.getModifiedCount() == 1) {
+                log.info("Reserved account free space was restored after an unsuccessful upload.");
+                return;
+            }
+        }
+        throw new CredentialException("Could not restore reserved space after concurrent account updates");
+    }
+
+    private AccountCredentials reserveFreeSpace(MongoCollection<Document> accounts,
+                                                AccountCredentials candidate,
+                                                long uploadSizeBytes) {
+        for (int attempt = 0; attempt < FREE_SPACE_UPDATE_ATTEMPTS; attempt++) {
+            Document account = accounts.find(eq("_id", candidate.login())).first();
+            Document accessor = account == null ? null : account.get("accessor", Document.class);
+            Object currentValue = accessor == null ? null : accessor.get("freeSize");
+            Long currentSize = sizeInBytes(currentValue);
+            if (currentSize == null || currentSize < uploadSizeBytes) {
+                return null;
+            }
+
+            long remainingSize = currentSize - uploadSizeBytes;
+            var result = accounts.updateOne(
+                    and(eq("_id", candidate.login()), eq("accessor.freeSize", currentValue)),
+                    set("accessor.freeSize", remainingSize));
+            if (result.getModifiedCount() == 1) {
+                return new AccountCredentials(candidate.login(), candidate.consumerKey(),
+                        candidate.consumerSecret(), candidate.accessToken(), candidate.accessTokenSecret(),
+                        candidate.rootFolderId(), remainingSize);
+            }
+        }
+        return null;
     }
 
     static boolean requiresAuthorization(Document account, ProviderSettings settings, Instant now) {
@@ -204,6 +273,4 @@ public final class CredentialProvider {
     private static boolean blank(String value) {
         return value == null || value.isBlank();
     }
-
-    private record AccountCandidate(String login, long freeSizeBytes) { }
 }

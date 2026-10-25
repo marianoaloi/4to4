@@ -102,8 +102,14 @@ public final class MainSimple {
         try (MongoClient client = MongoClients.create(settings.mongoUri())) {
             CredentialProvider credentials = new CredentialProvider(settings, client);
             uploadFiles(files, input, moveDestination, remoteName, file -> {
-                AccountCredentials account = credentials.resolveBestFit(Files.size(file));
-                return new SelectedUpload(Config.forCredentials(account), account.login());
+                long size = Files.size(file);
+                AccountCredentials account = credentials.resolveBestFit(size);
+                try {
+                    return new SelectedUpload(Config.forCredentials(account), account.login(), credentials, size);
+                } catch (RuntimeException e) {
+                    restoreReservation(credentials, account.login(), size, e);
+                    throw e;
+                }
             });
         }
     }
@@ -111,7 +117,7 @@ public final class MainSimple {
     private static void uploadWithDirectCredentials(List<Path> files, Path input, Path moveDestination,
                                                     String remoteName, Config config) throws Exception {
         uploadFiles(files, input, moveDestination, remoteName,
-                file -> new SelectedUpload(config, "direct credentials"));
+                file -> new SelectedUpload(config, "direct credentials", null, 0));
     }
 
     private static void uploadFiles(List<Path> files, Path input, Path moveDestination, String remoteName,
@@ -121,7 +127,7 @@ public final class MainSimple {
         int moveFailed = 0;
         for (Path file : files) {
             String name = remoteName == null ? FourSharedUploader.generateRemoteName(file) : remoteName;
-            SelectedUpload selected;
+            SelectedUpload selected = null;
             FourSharedUploader.UploadResult result;
             long size;
             try {
@@ -129,14 +135,17 @@ public final class MainSimple {
                 selected = configProvider.forFile(file);
                 result = new FourSharedUploader(selected.config()).upload(file, name);
             } catch (IOException e) {
+                restoreReservation(selected, e);
                 failed++;
                 log.warn("Upload failed; local file was retained ({}).", e.getClass().getSimpleName());
                 System.err.printf("Failed %s: %s%n", file, e.getMessage());
                 continue;
             } catch (InterruptedException e) {
+                restoreReservation(selected, e);
                 Thread.currentThread().interrupt();
                 throw e;
             } catch (Exception e) {
+                restoreReservation(selected, e);
                 failed++;
                 log.warn("Upload failed; local file was retained ({}).", e.getClass().getSimpleName());
                 System.err.printf("Failed %s: %s%n", file, e.getMessage());
@@ -179,7 +188,26 @@ public final class MainSimple {
         SelectedUpload forFile(Path file) throws Exception;
     }
 
-    private record SelectedUpload(Config config, String accountLogin) { }
+    private record SelectedUpload(Config config, String accountLogin,
+                                  CredentialProvider reservationOwner, long reservedBytes) { }
+
+    private static void restoreReservation(SelectedUpload selected, Throwable originalFailure) {
+        if (selected != null && selected.reservationOwner() != null) {
+            restoreReservation(selected.reservationOwner(), selected.accountLogin(),
+                    selected.reservedBytes(), originalFailure);
+        }
+    }
+
+    private static void restoreReservation(CredentialProvider owner, String login, long bytes,
+                                           Throwable originalFailure) {
+        try {
+            owner.restoreReservedSpace(login, bytes);
+        } catch (RuntimeException restoreFailure) {
+            originalFailure.addSuppressed(restoreFailure);
+            log.error("Could not restore the account free-space reservation after upload failure ({}).",
+                    restoreFailure.getClass().getSimpleName());
+        }
+    }
 
     private static Path moveUploadedFile(Path input, Path file, Path backupDirectory) throws IOException {
         Path relativePath = Files.isDirectory(input) ? input.relativize(file) : file.getFileName();
