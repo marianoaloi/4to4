@@ -172,9 +172,9 @@ public final class MainSimple {
             FourSharedUploader.UploadResult result = new FourSharedUploader(selected.config()).upload(file, name);
             if (selected.reservation() != null) selected.reservation().complete();
             log.info("Upload succeeded ({} bytes).", size);
-            System.out.printf("Uploaded %s -> %s using %s (%d bytes)%n",
+            log.info("Uploaded {} -> {} using {} ({} bytes).",
                     file, name, selected.accountLogin(), size);
-            System.out.println(result.responseBody());
+            log.info("Upload response: {}", result.responseBody());
             if (moveDestination != null) {
                 try {
                     Path destination = moveUploadedFile(input, file, moveDestination);
