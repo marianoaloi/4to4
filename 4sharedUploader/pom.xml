@@ -61,7 +61,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>br.com.aloi.uploader.Main</mainClass>
+                            <mainClass>br.com.aloi.uploader.MainSimple</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
@@ -71,7 +71,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>br.com.aloi.uploader.Main</mainClass>
+                            <mainClass>br.com.aloi.uploader.MainSimple</mainClass>
                         </manifest>
                     </archive>
                     <descriptorRefs>

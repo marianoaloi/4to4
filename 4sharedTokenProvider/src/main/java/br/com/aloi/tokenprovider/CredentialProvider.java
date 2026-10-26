@@ -41,6 +41,45 @@ public final class CredentialProvider {
     }
 
     public AccountCredentials resolve(LoginEntry4to4 login) {
+        return resolveSnapshot(login).credentials();
+    }
+
+    /** Loads eligible accounts with one collection scan and refreshes stale token pairs once. */
+    public List<ResolvedAccount> loadAccounts() {
+        MongoCollection<Document> accounts = client.getDatabase(settings.database())
+                .getCollection(settings.accountCollection());
+        List<ResolvedAccount> loaded = new ArrayList<>();
+        for (Document account : accounts.find()) {
+            Object id = account.get("_id");
+            Document accessor = account.get("accessor", Document.class);
+            if (!(id instanceof String login) || login.isBlank() || !hasTokenPair(accessor)) {
+                continue;
+            }
+            Object createdValue = accessor.get("created");
+            if (!(createdValue instanceof Date created)) {
+                continue;
+            }
+            try {
+                Instant updatedAt = created.toInstant();
+                if (Duration.between(updatedAt, clock.instant()).compareTo(settings.maxTokenAge()) > 0) {
+                    loaded.add(resolveSnapshot(new LoginEntry4to4(login, LoginType.CURRENT)));
+                } else {
+                    loaded.add(new ResolvedAccount(
+                            fromAccountDocument(login, account, settings, clock.instant()), updatedAt));
+                }
+            } catch (RuntimeException refreshFailure) {
+                log.warn("Could not load account credentials into the upload pool ({}).",
+                        refreshFailure.getClass().getSimpleName());
+            }
+        }
+        return List.copyOf(loaded);
+    }
+
+    public Duration maxTokenAge() {
+        return settings.maxTokenAge();
+    }
+
+    public ResolvedAccount resolveSnapshot(LoginEntry4to4 login) {
         if (login == null || login.login() == null || login.login().isBlank()) {
             throw new IllegalArgumentException("A 4shared login is required");
         }
@@ -49,7 +88,9 @@ public final class CredentialProvider {
                 .getCollection(settings.accountCollection());
         Document account = accounts.find(eq("_id", normalizedLogin)).first();
         if (!requiresAuthorization(account, settings, clock.instant())) {
-            return fromAccountDocument(normalizedLogin, account, settings, clock.instant());
+            AccountCredentials credentials = fromAccountDocument(normalizedLogin, account, settings, clock.instant());
+            Date created = account.get("accessor", Document.class).getDate("created");
+            return new ResolvedAccount(credentials, created.toInstant());
         }
 
         OAuthAuthorizationClient authorization = new OAuthAuthorizationClient(settings);
@@ -81,9 +122,15 @@ public final class CredentialProvider {
                 rootFolderId = previousUser.getString("rootFolderId");
             }
         }
-        return new AccountCredentials(normalizedLogin, settings.consumerKey(), settings.consumerSecret(),
+        AccountCredentials credentials = new AccountCredentials(normalizedLogin, settings.consumerKey(), settings.consumerSecret(),
                 tokens.accessToken(), tokens.accessTokenSecret(), rootFolderId,
                 sizeInBytes(user.get("freeSpace")));
+        return new ResolvedAccount(credentials, clock.instant());
+    }
+
+    private static boolean hasTokenPair(Document accessor) {
+        return accessor != null && !blank(accessor.getString("accessToken"))
+                && !blank(accessor.getString("tokenSecret"));
     }
 
     /** Refreshes stale accessors, then chooses the fitting account with the least free space. */
