@@ -222,6 +222,81 @@ public final class CredentialProvider {
         throw new CredentialException("Could not restore reserved space after concurrent account updates");
     }
 
+    /** Persists the free-space consumption after an upload has completed successfully. */
+    public void consumeReservedSpace(String login, long uploadSizeBytes) {
+        if (blank(login)) {
+            throw new IllegalArgumentException("A 4shared login is required to consume reserved space");
+        }
+        if (uploadSizeBytes <= 0) {
+            throw new IllegalArgumentException("Consumed upload size must be greater than zero");
+        }
+
+        MongoCollection<Document> accounts = client.getDatabase(settings.database())
+                .getCollection(settings.accountCollection());
+        String normalizedLogin = login.trim();
+        for (int attempt = 0; attempt < FREE_SPACE_UPDATE_ATTEMPTS; attempt++) {
+            Document account = accounts.find(eq("_id", normalizedLogin)).first();
+            Document accessor = account == null ? null : account.get("accessor", Document.class);
+            Object currentValue = accessor == null ? null : accessor.get("freeSize");
+            Long currentSize = sizeInBytes(currentValue);
+            if (currentSize == null || currentSize < uploadSizeBytes) {
+                throw new CredentialException("Could not persist consumed space because the account free-size value is unavailable or too small");
+            }
+
+            long remainingSize = currentSize - uploadSizeBytes;
+            var result = accounts.updateOne(
+                    and(eq("_id", normalizedLogin), eq("accessor.freeSize", currentValue)),
+                    set("accessor.freeSize", remainingSize));
+            if (result.getModifiedCount() == 1) {
+                log.info("Consumed account free space was persisted after a successful upload.");
+                return;
+            }
+        }
+        throw new CredentialException("Could not persist consumed space after concurrent account updates");
+    }
+
+    /** Fetches the current 4shared profile and saves its free-space value after a storage rejection. */
+    public ResolvedAccount refreshFreeSpace(String login) {
+        if (blank(login)) {
+            throw new IllegalArgumentException("A 4shared login is required to refresh free space");
+        }
+        String normalizedLogin = login.trim();
+        MongoCollection<Document> accounts = client.getDatabase(settings.database())
+                .getCollection(settings.accountCollection());
+        Document account = accounts.find(eq("_id", normalizedLogin)).first();
+        if (requiresAuthorization(account, settings, clock.instant())) {
+            return resolveSnapshot(new LoginEntry4to4(normalizedLogin, LoginType.CURRENT));
+        }
+
+        Document accessor = account.get("accessor", Document.class);
+        String accessToken = accessor.getString("accessToken");
+        String tokenSecret = accessor.getString("tokenSecret");
+        OAuthAuthorizationClient.TokenPair tokens = new OAuthAuthorizationClient.TokenPair(
+                accessToken, tokenSecret, accessor.getString("requestToken"));
+        Document user = new OAuthAuthorizationClient(settings).getUser(tokens);
+        Long freeSize = sizeInBytes(user.get("freeSpace"));
+        if (freeSize == null) {
+            throw new CredentialException("4shared user lookup returned no valid free-space value");
+        }
+
+        var result = accounts.updateOne(
+                and(eq("_id", normalizedLogin), eq("accessor.accessToken", accessToken),
+                        eq("accessor.tokenSecret", tokenSecret)),
+                new Document("$set", new Document("accessor.freeSize", user.get("freeSpace"))
+                        .append("accessor.user.freeSpace", user.get("freeSpace"))));
+        if (result.getMatchedCount() == 0) {
+            return resolveSnapshot(new LoginEntry4to4(normalizedLogin, LoginType.CURRENT));
+        }
+
+        AccountCredentials current = fromAccountDocument(normalizedLogin, account, settings, clock.instant());
+        AccountCredentials refreshed = new AccountCredentials(current.login(), current.consumerKey(),
+                current.consumerSecret(), current.accessToken(), current.accessTokenSecret(),
+                current.rootFolderId(), freeSize);
+        Date created = accessor.getDate("created");
+        log.info("Account free space was refreshed from the 4shared user profile and saved.");
+        return new ResolvedAccount(refreshed, created.toInstant());
+    }
+
     private AccountCredentials reserveFreeSpace(MongoCollection<Document> accounts,
                                                 AccountCredentials candidate,
                                                 long uploadSizeBytes) {

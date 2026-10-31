@@ -11,10 +11,13 @@ import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 final class FourSharedUploader {
     private static final char[] NAME_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".toCharArray();
     private static final SecureRandom RANDOM = new SecureRandom();
+    private static final Pattern INSUFFICIENT_STORAGE_CODE = Pattern.compile(
+            "\"code\"\\s*:\\s*\"403\\.0100\"");
 
     private final Config config;
     private final HttpClient httpClient;
@@ -55,7 +58,7 @@ final class FourSharedUploader {
 
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IOException("4shared returned HTTP " + response.statusCode() + ": " + response.body());
+            throw new UploadException(response.statusCode(), response.body());
         }
         return new UploadResult(response.statusCode(), response.body());
     }
@@ -84,5 +87,20 @@ final class FourSharedUploader {
     }
 
     record UploadResult(int statusCode, String responseBody) {
+    }
+
+    static final class UploadException extends IOException {
+        private final int statusCode;
+        private final String responseBody;
+
+        UploadException(int statusCode, String responseBody) {
+            super("4shared returned HTTP " + statusCode + ": " + responseBody);
+            this.statusCode = statusCode;
+            this.responseBody = responseBody;
+        }
+
+        boolean isInsufficientStorage() {
+            return statusCode == 403 && INSUFFICIENT_STORAGE_CODE.matcher(responseBody).find();
+        }
     }
 }

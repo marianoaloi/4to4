@@ -54,7 +54,7 @@ final class AccountPool {
         }
         refreshed.sort(Comparator.comparingLong(AccountState::availableBytes));
         for (AccountState account : refreshed) {
-            Reservation reservation = account.reserve(sizeBytes);
+            Reservation reservation = account.reserve(sizeBytes, provider);
             if (reservation != null) {
                 return reservation;
             }
@@ -97,13 +97,13 @@ final class AccountPool {
             return availableBytes;
         }
 
-        synchronized Reservation reserve(long sizeBytes) {
+        synchronized Reservation reserve(long sizeBytes, CredentialProvider provider) {
             if (availableBytes < sizeBytes) {
                 return null;
             }
             availableBytes -= sizeBytes;
             inFlightBytes = Math.addExact(inFlightBytes, sizeBytes);
-            return new Reservation(this, credentials, sizeBytes);
+            return new Reservation(this, credentials, sizeBytes, provider);
         }
 
         synchronized void finish(long sizeBytes, boolean success) {
@@ -113,18 +113,36 @@ final class AccountPool {
                         ? Long.MAX_VALUE : availableBytes + sizeBytes;
             }
         }
+
+        synchronized void rollbackAndRefresh(long sizeBytes, String login, CredentialProvider provider) {
+            finish(sizeBytes, false);
+            try {
+                ResolvedAccount refreshed = provider.refreshFreeSpace(login);
+                credentials = refreshed.credentials();
+                tokenUpdatedAt = refreshed.tokenUpdatedAt();
+                long remoteFree = credentials.freeSizeBytes() == null ? 0 : credentials.freeSizeBytes();
+                availableBytes = Math.max(0, remoteFree - inFlightBytes);
+            } catch (RuntimeException refreshFailure) {
+                availableBytes = 0;
+                log.error("Could not refresh the account free space after a 4shared storage rejection ({}).",
+                        refreshFailure.getClass().getSimpleName());
+            }
+        }
     }
 
     static final class Reservation {
         private final AccountState owner;
         private final AccountCredentials credentials;
         private final long sizeBytes;
+        private final CredentialProvider provider;
         private boolean completed;
 
-        private Reservation(AccountState owner, AccountCredentials credentials, long sizeBytes) {
+        private Reservation(AccountState owner, AccountCredentials credentials, long sizeBytes,
+                            CredentialProvider provider) {
             this.owner = owner;
             this.credentials = credentials;
             this.sizeBytes = sizeBytes;
+            this.provider = provider;
         }
 
         AccountCredentials credentials() {
@@ -139,10 +157,25 @@ final class AccountPool {
             finish(false);
         }
 
+        synchronized void refreshFreeSpaceAfterInsufficientStorage() {
+            if (!completed) {
+                owner.rollbackAndRefresh(sizeBytes, credentials.login(), provider);
+                completed = true;
+            }
+        }
+
         private void finish(boolean success) {
             if (!completed) {
                 owner.finish(sizeBytes, success);
                 completed = true;
+                if (success) {
+                    try {
+                        provider.consumeReservedSpace(credentials.login(), sizeBytes);
+                    } catch (RuntimeException persistenceFailure) {
+                        log.error("Upload succeeded, but consumed free space could not be persisted for the account ({}).",
+                                persistenceFailure.getClass().getSimpleName());
+                    }
+                }
             }
         }
     }

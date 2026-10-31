@@ -193,12 +193,21 @@ public final class MainSimple {
             }
             return new UploadOutcome(true, false);
         } catch (InterruptedException e) {
-            rollback(selected.reservation(), e);
+            rollback(selected == null ? null : selected.reservation(), e);
             Thread.currentThread().interrupt();
             System.err.printf("Upload interrupted for %s.%n", file);
             return new UploadOutcome(false, false);
+        } catch (FourSharedUploader.UploadException e) {
+            if (e.isInsufficientStorage() && selected != null && selected.reservation() != null) {
+                selected.reservation().refreshFreeSpaceAfterInsufficientStorage();
+            } else {
+                rollback(selected == null ? null : selected.reservation(), e);
+            }
+            log.warn("Upload failed; local file was retained ({}).", e.getClass().getSimpleName());
+            System.err.printf("Failed %s: %s%n", file, e.getMessage());
+            return new UploadOutcome(false, false);
         } catch (Exception e) {
-            rollback(selected.reservation(), e);
+            rollback(selected == null ? null : selected.reservation(), e);
             log.warn("Upload failed; local file was retained ({}).", e.getClass().getSimpleName());
             System.err.printf("Failed %s: %s%n", file, e.getMessage());
             return new UploadOutcome(false, false);
