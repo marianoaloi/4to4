@@ -4,9 +4,10 @@ import br.com.aloi.domain.AccountCredentials;
 import br.com.aloi.domain.LoginEntry4to4;
 import br.com.aloi.tokenprovider.CredentialProvider;
 import com.mongodb.client.MongoCollection;
+import com.mongodb.client.model.DeleteOneModel;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.InsertOneModel;
 import com.mongodb.client.model.UpdateOneModel;
-import com.mongodb.client.model.UpdateOptions;
 
 import lombok.extern.slf4j.Slf4j;
 import org.bson.Document;
@@ -23,33 +24,82 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.function.Supplier;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 
 @Slf4j
 final class PostsSynchronizer {
     private static final int MAX_PARALLEL_LOGINS = 6;
     private static final int MAX_PARALLEL_THUMBNAILS = 20;
 
-    private final MongoCollection<Document> posts;
-    private final CredentialProvider credentials;
     private final Path thumbnailDirectory;
 
-    PostsSynchronizer(MongoCollection<Document> posts, CredentialProvider credentials) {
-        this.posts = posts;
-        this.credentials = credentials;
+    PostsSynchronizer() {
         this.thumbnailDirectory = Path.of(value("FOURSHARED_THUMBNAIL_DIR", "/opt/maloi/staticimages/"))
                 .toAbsolutePath().normalize();
     }
 
-    RunSummary run(List<LoginEntry4to4> selectedLogins, boolean fullCatalogRun) {
+    private BiFunction<Future<LoginInventory>, MongoCollection<Document>, ResumeDataBase> insertPrune = (job,
+            posts) -> {
+        try {
+            LoginInventory result = job.get();
+            String login = result.login();
+            List<Document> files = result.files();
+
+            log.info("Fetched {} files for {}", files.size(), login);
+
+            var webIds = files.stream().map(doc -> doc.getString("id")).toList();
+
+            var actualIds = posts.find().filter(Filters.eq("login", login)).projection(new Document("_id", 1))
+                    .into(new ArrayList<>()).stream().map(doc -> String.valueOf(doc.get("_id"))).toList();
+
+            var insertIds = webIds.stream().filter(id -> !actualIds.contains(id)).toList();
+            var removeIds = actualIds.stream().filter(id -> !webIds.contains(id)).toList();
+
+            var resultBulk = posts.bulkWrite(files.stream().filter(doc -> {
+                Object rawId = doc.get("id");
+                return rawId != null && !rawId.toString().isBlank() && !actualIds.contains(rawId.toString());
+            }).map(doc -> {
+                Object rawId = doc.get("id");
+                if (rawId == null || rawId.toString().isBlank())
+                    return null;
+                String id = rawId.toString();
+                Document stored = new Document(doc).append("_id", id).append("login", login);
+                return new InsertOneModel<Document>(stored);
+            }).toList());
+            log.info("Inserted {} new post documents for {}", resultBulk.getInsertedCount(), login);
+
+            resultBulk = posts.bulkWrite(removeIds.stream().map(id -> {
+                return new DeleteOneModel<Document>(Filters.eq("_id", id));
+            }).toList());
+            log.info("Removed {} stale post documents for {}", resultBulk.getDeletedCount(), login);
+
+            return new ResumeDataBase(insertIds, removeIds, login);
+        } catch (Exception e) {
+            log.error("Could not insert/prune for one login ({}).", rootCause(e).getClass().getSimpleName());
+            throw new RuntimeException(e);
+        }
+    };
+
+    private BiFunction<ResumeDataBase, CredentialProvider, ResumeThumb> getThumbnail = (resume, credentials) ->{
+        return new ResumeThumb();
+    };
+
+    RunSummary run(List<LoginEntry4to4> selectedLogins, boolean fullCatalogRun, MongoCollection<Document> posts,
+            CredentialProvider credentials) {
         Map<String, List<Document>> inventoryByLogin = new HashMap<>();
         Map<String, AccountCredentials> credentialsByLogin = new HashMap<>();
         int failures = 0;
-        try (ExecutorService executor = Executors.newFixedThreadPool(Math.min(MAX_PARALLEL_LOGINS,
-                Math.max(1, selectedLogins.size())))) {
+        try (ExecutorService executor = Executors
+                .newFixedThreadPool(Math.min(MAX_PARALLEL_LOGINS, Math.max(1, selectedLogins.size())))) {
             List<Future<LoginInventory>> jobs = new ArrayList<>();
+
+            Function<LoginEntry4to4, Future<LoginInventory>> executeFetch = (login) -> executor
+                    .submit(() -> fetch(login));
+
+            selectedLogins.stream().map(executeFetch).map(docs -> insertPrune.apply(docs, posts))
+                    .map(resume -> getThumbnail.apply(resume, credentials));
+
             for (LoginEntry4to4 login : selectedLogins) {
                 jobs.add(executor.submit(() -> fetch(login)));
             }
@@ -58,20 +108,21 @@ final class PostsSynchronizer {
                     LoginInventory result = job.get();
                     inventoryByLogin.put(result.login(), result.files());
                     credentialsByLogin.put(result.login(), result.credentials());
-                    log.info("Fetched {} files for {}", result.files().size(), result.login());
                 } catch (Exception e) {
                     failures++;
-                    log.error("Could not fetch file inventory for one login ({}).", rootCause(e).getClass().getSimpleName());
+                    log.error("Could not fetch file inventory for one login ({}).",
+                            rootCause(e).getClass().getSimpleName());
                 }
             }
         }
 
         Set<String> currentIds = persistNewDocuments(inventoryByLogin);
         boolean pruned = fullCatalogRun && failures == 0 && inventoryByLogin.size() == selectedLogins.size();
-        if (pruned) pruneStaleDocuments(inventoryByLogin);
+        if (pruned)
+            pruneStaleDocuments(inventoryByLogin);
         int thumbnails = downloadMissingThumbnails(credentialsByLogin);
-        return new RunSummary(selectedLogins.size(), inventoryByLogin.size(), failures,
-                currentIds.size(), thumbnails, pruned);
+        return new RunSummary(selectedLogins.size(), inventoryByLogin.size(), failures, currentIds.size(), thumbnails,
+                pruned);
     }
 
     private LoginInventory fetch(LoginEntry4to4 login) throws IOException, InterruptedException {
@@ -81,28 +132,33 @@ final class PostsSynchronizer {
     }
 
     private Set<String> persistNewDocuments(Map<String, List<Document>> inventoryByLogin) {
-        Supplier<Stream<Document>> documents = () -> inventoryByLogin.entrySet().stream().flatMap(
-            entry -> entry.getValue().stream().map(file -> {
-                String rawId = file.getString("id");
-                if (rawId == null || rawId.toString().isBlank()) return null;
-                String id = rawId.toString();
-                Document stored = new Document(file).append("_id", id).append("login", entry.getKey());
-                return stored;
-            })
-        );
+        Set<String> actualIds = new HashSet<>();
+        Map<String, Document> byId = new HashMap<>();
+        inventoryByLogin.forEach((login, files) -> files.forEach(file -> {
+            Object rawId = file.get("id");
+            if (rawId == null || rawId.toString().isBlank())
+                return;
+            String id = rawId.toString();
+            actualIds.add(id);
+            Document stored = new Document(file).append("_id", id).append("login", login);
+            byId.putIfAbsent(id, stored);
+        }));
 
-
-        var result = posts.bulkWrite(
-                documents.get().map(doc -> new UpdateOneModel<Document>(eq("_id", doc.get("_id")), doc,
-                    new UpdateOptions().upsert(true)))
-            .toList());
-        log.info("Persisted {} new post documents ({} modified, {} upserted).",
-                result.getInsertedCount() + result.getModifiedCount(), result.getModifiedCount(),
-                result.getUpserts().size());
-
-
-        
-        return documents.get().map(file -> file.get("id").toString()).collect(Collectors.toSet());
+        Set<String> existing = new HashSet<>();
+        List<String> ids = new ArrayList<>(byId.keySet());
+        for (int start = 0; start < ids.size(); start += 500) {
+            List<String> chunk = ids.subList(start, Math.min(start + 500, ids.size()));
+            for (Document found : posts.find(Filters.in("_id", chunk)).projection(new Document("_id", 1))) {
+                existing.add(String.valueOf(found.get("_id")));
+            }
+        }
+        List<Document> toInsert = byId.entrySet().stream().filter(entry -> !existing.contains(entry.getKey()))
+                .map(Map.Entry::getValue).toList();
+        if (!toInsert.isEmpty()) {
+            posts.insertMany(toInsert);
+            log.info("Inserted {} new post documents", toInsert.size());
+        }
+        return actualIds;
     }
 
     private void pruneStaleDocuments(Map<String, List<Document>> inventoryByLogin) {
@@ -110,18 +166,21 @@ final class PostsSynchronizer {
         for (Map.Entry<String, List<Document>> inventory : inventoryByLogin.entrySet()) {
             Set<String> actualIds = new HashSet<>();
             for (Document file : inventory.getValue()) {
-                if (file.get("id") != null) actualIds.add(file.get("id").toString());
+                if (file.get("id") != null)
+                    actualIds.add(file.get("id").toString());
             }
             List<String> staleIds = new ArrayList<>();
             for (Document stored : posts.find(Filters.eq("login", inventory.getKey()))
                     .projection(new Document("_id", 1))) {
                 String id = String.valueOf(stored.get("_id"));
-                if (!actualIds.contains(id)) staleIds.add(id);
+                if (!actualIds.contains(id))
+                    staleIds.add(id);
             }
             for (int start = 0; start < staleIds.size(); start += 500) {
                 List<String> chunk = staleIds.subList(start, Math.min(start + 500, staleIds.size()));
-                removed += posts.deleteMany(Filters.and(Filters.eq("login", inventory.getKey()),
-                        Filters.in("_id", chunk))).getDeletedCount();
+                removed += posts
+                        .deleteMany(Filters.and(Filters.eq("login", inventory.getKey()), Filters.in("_id", chunk)))
+                        .getDeletedCount();
             }
         }
         log.info("Removed {} stale post documents after a complete catalog run", removed);
@@ -133,8 +192,7 @@ final class PostsSynchronizer {
         } catch (IOException e) {
             throw new IllegalStateException("Could not create thumbnail directory " + thumbnailDirectory, e);
         }
-        List<Document> documents = posts.find(Filters.and(
-                Filters.in("login", credentialsByLogin.keySet()),
+        List<Document> documents = posts.find(Filters.and(Filters.in("login", credentialsByLogin.keySet()),
                 Filters.exists("id"), Filters.exists("mimeType"), Filters.exists("login"))).into(new ArrayList<>());
         int downloaded = 0;
         try (ExecutorService executor = Executors.newFixedThreadPool(MAX_PARALLEL_THUMBNAILS)) {
@@ -142,14 +200,17 @@ final class PostsSynchronizer {
             for (Document document : documents) {
                 String id = document.getString("id");
                 String login = document.getString("login");
-                if (id == null || login == null || !credentialsByLogin.containsKey(login)) continue;
+                if (id == null || login == null || !credentialsByLogin.containsKey(login))
+                    continue;
                 Path target = thumbnailDirectory.resolve(id).normalize();
-                if (!target.getParent().equals(thumbnailDirectory) || Files.exists(target)) continue;
+                if (!target.getParent().equals(thumbnailDirectory) || Files.exists(target))
+                    continue;
                 jobs.add(executor.submit(() -> downloadThumbnail(document, credentialsByLogin.get(login), target)));
             }
             for (Future<Boolean> job : jobs) {
                 try {
-                    if (job.get()) downloaded++;
+                    if (job.get())
+                        downloaded++;
                 } catch (Exception e) {
                     log.warn("A thumbnail worker failed ({})", rootCause(e).getClass().getSimpleName());
                 }
@@ -166,14 +227,14 @@ final class PostsSynchronizer {
             Files.write(target, image);
             String maloiType = document.getString("mimeType") != null
                     && document.getString("mimeType").toLowerCase().contains("video") ? "VIDEO" : "IMG";
-            posts.updateOne(Filters.eq("_id", id), new Document("$unset", new Document("errorImg", ""))
-                    .append("$set", new Document("maloiType", maloiType)));
+            posts.updateOne(Filters.eq("_id", id), new Document("$unset", new Document("errorImg", "")).append("$set",
+                    new Document("maloiType", maloiType)));
         } catch (Exception e) {
             String reason = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
             try {
                 Files.write(target, placeholder(id));
-                posts.updateOne(Filters.eq("_id", id), new Document("$set",
-                        new Document("errorImg", reason).append("maloiType", "IMG")));
+                posts.updateOne(Filters.eq("_id", id),
+                        new Document("$set", new Document("errorImg", reason).append("maloiType", "IMG")));
             } catch (IOException writeFailure) {
                 log.warn("Could not write thumbnail or placeholder for {}", id);
                 return false;
@@ -200,7 +261,8 @@ final class PostsSynchronizer {
 
     private static Throwable rootCause(Throwable error) {
         Throwable current = error;
-        while (current.getCause() != null) current = current.getCause();
+        while (current.getCause() != null)
+            current = current.getCause();
         return current;
     }
 
@@ -209,7 +271,17 @@ final class PostsSynchronizer {
         return configured == null || configured.isBlank() ? fallback : configured.trim();
     }
 
-    private record LoginInventory(String login, AccountCredentials credentials, List<Document> files) { }
-    record RunSummary(int requestedLogins, int syncedLogins, int failures, int currentFiles,
-                      int thumbnailsWritten, boolean staleDocumentsPruned) { }
+    private record LoginInventory(String login, AccountCredentials credentials, List<Document> files) {
+    }
+
+    record RunSummary(int requestedLogins, int syncedLogins, int failures, int currentFiles, int thumbnailsWritten,
+            boolean staleDocumentsPruned) {
+    }
+
+    record ResumeDataBase(List<String> inserted, List<String> removed, String login) {
+        // TODO Auto-generated constructor stub
+    }
+
+    record ResumeThumb(){}
+
 }

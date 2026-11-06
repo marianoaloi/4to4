@@ -39,10 +39,11 @@ public final class Main {
 
             ProviderSettings settings = ProviderSettings.fromEnvironment();
             try (MongoClient client = MongoClients.create(settings.mongoUri())) {
-                PostsSynchronizer synchronizer = new PostsSynchronizer(
-                        client.getDatabase(settings.database()).getCollection("posts"),
-                        new CredentialProvider(settings, client));
-                PostsSynchronizer.RunSummary summary = synchronizer.run(selected, fullCatalogRun);
+                PostsSynchronizer synchronizer = new PostsSynchronizer();
+                
+                        var collection = client.getDatabase(settings.database()).getCollection("posts");
+                        var credention = new CredentialProvider(settings, client);
+                PostsSynchronizer.RunSummary summary = synchronizer.run(selected, fullCatalogRun,collection,credention);
                 log.info("Finished: {}/{} login(s), {} file ID(s), {} thumbnail(s), {} failure(s).",
                         summary.syncedLogins(), summary.requestedLogins(), summary.currentFiles(),
                         summary.thumbnailsWritten(), summary.failures());
