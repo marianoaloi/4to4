@@ -9,3 +9,18 @@ java -jar target\4shared-uploader-1.0.0-jar-with-dependencies.jar [--name REMOTE
 Directories are traversed recursively. Up to 10 files upload concurrently and files are kept locally by default. To move each file to `C:\tmp\backup` only after a successful upload, pass `--move-to C:\tmp\backup` or set the `FOURSHARED_POST_UPLOAD_DIRECTORY` environment variable to that path. The command-line option overrides the environment variable. When uploading a directory, its relative directory structure is preserved in the backup folder. Existing destination files are not overwritten.
 
 With MongoDB credentials configured, the JVM-wide account pool loads eligible accounts once and reserves free space in memory before each upload. A reservation stays unavailable to other uploads until the request succeeds or fails. Successful uploads persist the consumed bytes to MongoDB; failed uploads return their reserved bytes to the pool. For HTTP 403 with code `403.0100`, the uploader fetches `/v1_2/user`, saves the returned free space, and corrects the pool entry. Tokens and free space refresh together when a token reaches the configured freshness window (50 minutes by default). Remote names are randomized by default. OAuth 1.0a request signing is implemented in this module. Direct credential environment variables remain available for a single-account upload.
+
+### Windows Explorer context menu
+
+Build the standalone JAR from the repository root, then install the per-user Explorer menu:
+
+```powershell
+mvn -DskipTests package
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\windows\Install-ContextMenu.ps1
+```
+
+Right-click a folder (or the blank area inside an open folder) and choose **Upload folder to 4shared (recursive)**. The selected folder is passed to the uploader and `FOURSHARED_POST_UPLOAD_DIRECTORY` is set to `C:\tmp\backup` for that upload. The registration is stored under the current user's `HKEY_CURRENT_USER` hive and requires no administrator rights. Remove it with:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\windows\Install-ContextMenu.ps1 -Uninstall
+```

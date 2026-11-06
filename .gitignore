@@ -22,3 +22,4 @@ AGENTS.md
 .swarm/**
 logs/**.log
 logs/**.log.gz
+ruvector.db
