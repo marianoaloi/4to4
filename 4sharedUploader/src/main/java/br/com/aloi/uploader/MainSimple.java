@@ -195,6 +195,7 @@ public final class MainSimple {
         } catch (InterruptedException e) {
             rollback(selected == null ? null : selected.reservation(), e);
             Thread.currentThread().interrupt();
+            log.error("Upload interrupted by exception: {}", e);
             System.err.printf("Upload interrupted for %s.%n", file);
             return new UploadOutcome(false, false);
         } catch (FourSharedUploader.UploadException e) {

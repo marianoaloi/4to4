@@ -1,12 +1,23 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true, Position = 0)]
+    [Parameter(Position = 0)]
     [string] $FolderPath
 )
 
 $ErrorActionPreference = 'Stop'
 
 try {
+    if ([string]::IsNullOrWhiteSpace($FolderPath)) {
+        $FolderPath = Read-Host 'Folder to upload'
+    }
+    $FolderPath = $FolderPath.Trim()
+    if ($FolderPath.Length -ge 2 -and $FolderPath.StartsWith('"') -and $FolderPath.EndsWith('"')) {
+        $FolderPath = $FolderPath.Substring(1, $FolderPath.Length - 2)
+    }
+    if ([string]::IsNullOrWhiteSpace($FolderPath)) {
+        throw 'No folder path was provided.'
+    }
+
     $folder = Get-Item -LiteralPath $FolderPath
     if (-not $folder.PSIsContainer) {
         throw "The selected path is not a folder: $FolderPath"
@@ -19,7 +30,7 @@ try {
     }
 
     $env:FOURSHARED_POST_UPLOAD_DIRECTORY = 'C:\tmp\backup'
-    & java -jar $jarPath $folder.FullName
+    & "C:\Program Files\Java\jdk-21.0.12.1\bin\java.exe" -cp $jarPath br.com.aloi.uploader.MainSimple $folder.FullName
     exit $LASTEXITCODE
 }
 catch {
